@@ -1,7 +1,6 @@
 /** @odoo-module **/
 
 import { Component, useState, onWillStart } from "@odoo/owl";
-import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
 import { Dialog } from "@web/core/dialog/dialog";
 import { _t } from "@web/core/l10n/translation";
@@ -19,7 +18,6 @@ export class ReplacementWizardDialog extends Component {
         this.orm = useService("orm");
         this.action = useService("action");
         this.notification = useService("notification");
-        this.dialogService = useService("dialog");
 
         this.state = useState({
             step: 1,
@@ -50,12 +48,9 @@ export class ReplacementWizardDialog extends Component {
         this.state.loading = true;
         try {
             const returns = await this.orm.call(
-                "sale.order",
-                "get_available_returns",
-                [this.props.saleOrderId],
+                "sale.order", "get_available_returns", [this.props.saleOrderId],
             );
             this.state.availableReturns = returns;
-
             const reasons = await this.orm.searchRead(
                 "stock.replacement.reason",
                 [["active", "=", true]],
@@ -64,60 +59,46 @@ export class ReplacementWizardDialog extends Component {
             );
             this.state.replacementReasons = reasons;
         } catch (e) {
-            this.notification.add(_t("Error cargando datos: ") + e.message, {
-                type: "danger",
-            });
+            this.notification.add(_t("Error cargando datos: ") + e.message, { type: "danger" });
         }
         this.state.loading = false;
     }
 
-    get canGoStep2() {
-        return (
-            this.state.selectedReturnIds.length > 0 &&
-            this.state.replacementReasonId &&
-            (this.state.chargeCustomer || this.state.noChargeReason.trim())
-        );
+    // =====================================================================
+    //  STEP 1 — Type selection (named methods, no inline arrows)
+    // =====================================================================
+    onSelectTypeSame() { this.state.replacementType = "same_product"; }
+    onSelectTypeDifferent() { this.state.replacementType = "different_product"; }
+    onSelectTypeRefund() { this.state.replacementType = "refund"; }
+
+    // =====================================================================
+    //  STEP 1 — Form inputs
+    // =====================================================================
+    onReasonChange(ev) {
+        this.state.replacementReasonId = parseInt(ev.target.value) || false;
     }
 
-    get canGoStep3() {
-        return this.state.lines.some((l) => l.m2ToReplace > 0);
+    onChargeChange(ev) {
+        this.state.chargeCustomer = ev.target.checked;
     }
 
-    async goToStep2() {
-        if (!this.canGoStep2) return;
-        this.state.loading = true;
-        try {
-            const linesData = await this.orm.call(
-                "sale.order",
-                "get_return_lines_for_replacement",
-                [this.props.saleOrderId, this.state.selectedReturnIds],
-            );
-            this.state.lines = linesData.map((l) => ({
-                ...l,
-                replacementProductId: this.state.replacementType === "same_product" ? l.productId : false,
-                replacementProductName: this.state.replacementType === "same_product" ? l.productName : "",
-                m2ToReplace: this.state.replacementType === "refund" ? 0 : l.m2Returned,
-                replacementUnitPrice:
-                    this.state.replacementType === "same_product" ? l.originalUnitPrice : 0,
-            }));
-            this._recalcTotals();
-            this.state.step = 2;
-        } catch (e) {
-            this.notification.add(_t("Error cargando líneas: ") + e.message, {
-                type: "danger",
-            });
-        }
-        this.state.loading = false;
+    onNoChargeReasonInput(ev) {
+        this.state.noChargeReason = ev.target.value;
     }
 
-    goToStep3() {
-        if (!this.canGoStep3) return;
-        this._recalcTotals();
-        this.state.step = 3;
-    }
+    // =====================================================================
+    //  STEP 1 — Return selection
+    // =====================================================================
 
-    goBack(step) {
-        this.state.step = step;
+    /**
+     * Read return id from data-return-id attribute on the card element.
+     * We walk up the DOM from the click target to find the card.
+     */
+    onReturnCardClick(ev) {
+        const card = ev.currentTarget;
+        const returnId = parseInt(card.dataset.returnId);
+        if (!returnId) return;
+        this.toggleReturn(returnId);
     }
 
     toggleReturn(returnId) {
@@ -142,31 +123,81 @@ export class ReplacementWizardDialog extends Component {
     }
 
     get allReturnsSelected() {
+        return this.state.availableReturns.length > 0 &&
+            this.state.selectedReturnIds.length === this.state.availableReturns.length;
+    }
+
+    onCancel() {
+        this.props.close();
+    }
+
+    // =====================================================================
+    //  Navigation
+    // =====================================================================
+    get canGoStep2() {
         return (
-            this.state.availableReturns.length > 0 &&
-            this.state.selectedReturnIds.length === this.state.availableReturns.length
+            this.state.selectedReturnIds.length > 0 &&
+            this.state.replacementReasonId &&
+            (this.state.chargeCustomer || this.state.noChargeReason.trim())
         );
     }
 
-    onLineM2Change(index, ev) {
-        const val = parseFloat(ev.target.value) || 0;
-        this.state.lines[index].m2ToReplace = val;
+    get canGoStep3() {
+        return this.state.lines.some((l) => l.m2ToReplace > 0);
+    }
+
+    async goToStep2() {
+        if (!this.canGoStep2) return;
+        this.state.loading = true;
+        try {
+            const linesData = await this.orm.call(
+                "sale.order", "get_return_lines_for_replacement",
+                [this.props.saleOrderId, this.state.selectedReturnIds],
+            );
+            this.state.lines = linesData.map((l) => ({
+                ...l,
+                replacementProductId: this.state.replacementType === "same_product" ? l.productId : false,
+                replacementProductName: this.state.replacementType === "same_product" ? l.productName : "",
+                m2ToReplace: this.state.replacementType === "refund" ? 0 : l.m2Returned,
+                replacementUnitPrice: this.state.replacementType === "same_product" ? l.originalUnitPrice : 0,
+            }));
+            this._recalcTotals();
+            this.state.step = 2;
+        } catch (e) {
+            this.notification.add(_t("Error cargando líneas: ") + e.message, { type: "danger" });
+        }
+        this.state.loading = false;
+    }
+
+    goToStep3() {
+        if (!this.canGoStep3) return;
+        this._recalcTotals();
+        this.state.step = 3;
+    }
+
+    goBackTo1() { this.state.step = 1; }
+    goBackTo2() { this.state.step = 2; }
+
+    // =====================================================================
+    //  STEP 2 — Line editing via data-line-index attribute
+    // =====================================================================
+    onLineM2ChangeFromEvent(ev) {
+        const index = parseInt(ev.target.dataset.lineIndex);
+        this.state.lines[index].m2ToReplace = parseFloat(ev.target.value) || 0;
         this._recalcTotals();
     }
 
-    onLinePriceChange(index, ev) {
-        const val = parseFloat(ev.target.value) || 0;
-        this.state.lines[index].replacementUnitPrice = val;
+    onLinePriceChangeFromEvent(ev) {
+        const index = parseInt(ev.target.dataset.lineIndex);
+        this.state.lines[index].replacementUnitPrice = parseFloat(ev.target.value) || 0;
         this._recalcTotals();
     }
 
-    async onLineProductChange(index, ev) {
+    async onLineProductChangeFromEvent(ev) {
+        const index = parseInt(ev.target.dataset.lineIndex);
         const productId = parseInt(ev.target.value) || false;
         if (productId) {
-            const products = await this.orm.read("product.product", [productId], [
-                "display_name",
-                "list_price",
-            ]);
+            const products = await this.orm.read("product.product", [productId], ["display_name", "list_price"]);
             if (products.length) {
                 this.state.lines[index].replacementProductId = productId;
                 this.state.lines[index].replacementProductName = products[0].display_name;
@@ -177,49 +208,41 @@ export class ReplacementWizardDialog extends Component {
     }
 
     _recalcTotals() {
-        let totalReturned = 0;
-        let totalReplaced = 0;
-        let totalDiff = 0;
+        let totalReturned = 0, totalReplaced = 0, totalDiff = 0;
         for (const line of this.state.lines) {
             totalReturned += line.m2Returned;
             totalReplaced += line.m2ToReplace;
-            const origAmount = line.m2Returned * line.originalUnitPrice;
-            const replAmount = line.m2ToReplace * line.replacementUnitPrice;
-            totalDiff += replAmount - origAmount;
+            totalDiff += (line.m2ToReplace * line.replacementUnitPrice) - (line.m2Returned * line.originalUnitPrice);
         }
         this.state.totalM2Returned = totalReturned;
         this.state.totalM2Replaced = totalReplaced;
         this.state.totalDifference = totalDiff;
     }
 
+    // =====================================================================
+    //  Computed helpers
+    // =====================================================================
     get replacementTypeLabel() {
-        const labels = {
+        return {
             same_product: "Reposición mismo producto",
             different_product: "Cambio a otro producto",
             refund: "Devolución de dinero",
-        };
-        return labels[this.state.replacementType] || "";
+        }[this.state.replacementType] || "";
     }
 
     get reasonLabel() {
-        const r = this.state.replacementReasons.find(
-            (x) => x.id === this.state.replacementReasonId,
-        );
+        const r = this.state.replacementReasons.find((x) => x.id === this.state.replacementReasonId);
         return r ? r.name : "";
     }
 
-    get isRefund() {
-        return this.state.replacementType === "refund";
-    }
+    get isRefund() { return this.state.replacementType === "refund"; }
 
-    formatCurrency(val) {
-        return "$" + (val || 0).toFixed(2);
-    }
+    formatCurrency(val) { return "$" + (val || 0).toFixed(2); }
+    formatM2(val) { return (val || 0).toFixed(2) + " m²"; }
 
-    formatM2(val) {
-        return (val || 0).toFixed(2) + " m²";
-    }
-
+    // =====================================================================
+    //  Submit
+    // =====================================================================
     async onConfirm() {
         this.state.loading = true;
         try {
@@ -242,19 +265,12 @@ export class ReplacementWizardDialog extends Component {
                     sale_line_id: l.saleLineId,
                 })),
             };
-
             const result = await this.orm.call(
-                "sale.order",
-                "create_replacement_from_wizard",
+                "sale.order", "create_replacement_from_wizard",
                 [this.props.saleOrderId, payload],
             );
-
-            this.notification.add(_t("Reposición creada exitosamente"), {
-                type: "success",
-            });
-
+            this.notification.add(_t("Reposición creada exitosamente"), { type: "success" });
             this.props.close();
-
             if (result && result.replacement_id) {
                 this.action.doAction({
                     type: "ir.actions.act_window",
@@ -265,10 +281,7 @@ export class ReplacementWizardDialog extends Component {
                 });
             }
         } catch (e) {
-            this.notification.add(_t("Error creando reposición: ") + (e.data?.message || e.message), {
-                type: "danger",
-                sticky: true,
-            });
+            this.notification.add(_t("Error: ") + (e.data?.message || e.message), { type: "danger", sticky: true });
         }
         this.state.loading = false;
     }
