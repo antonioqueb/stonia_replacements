@@ -2,8 +2,8 @@
 <templates xml:space="preserve">
 
     <t t-name="stonia_replacements.ReplacementWizardDialog">
-        <Dialog title="'Reposición de Materiales'" size="'xl'" contentClass="'o_replacement_wizard'">
-            <div class="replacement-wizard">
+        <Dialog title="dialogTitle" size="'xl'">
+            <div class="o_replacement_wizard replacement-wizard">
                 <!-- Loading overlay -->
                 <div t-if="state.loading" class="rw-loading-overlay">
                     <div class="rw-spinner"/>
@@ -12,23 +12,23 @@
 
                 <!-- Step indicators -->
                 <div class="rw-steps">
-                    <div t-attf-class="rw-step {{ state.step >= 1 ? 'active' : '' }} {{ state.step > 1 ? 'done' : '' }}">
+                    <div t-attf-class="rw-step {{ state.step &gt;= 1 ? 'active' : '' }} {{ state.step &gt; 1 ? 'done' : '' }}">
                         <div class="rw-step-number">
-                            <t t-if="state.step > 1"><i class="fa fa-check"/></t>
+                            <t t-if="state.step &gt; 1"><i class="fa fa-check"/></t>
                             <t t-else="">1</t>
                         </div>
                         <div class="rw-step-label">Configuración</div>
                     </div>
-                    <div class="rw-step-connector" t-attf-class="{{ state.step > 1 ? 'active' : '' }}"/>
-                    <div t-attf-class="rw-step {{ state.step >= 2 ? 'active' : '' }} {{ state.step > 2 ? 'done' : '' }}">
+                    <div t-attf-class="rw-step-connector {{ state.step &gt; 1 ? 'active' : '' }}"/>
+                    <div t-attf-class="rw-step {{ state.step &gt;= 2 ? 'active' : '' }} {{ state.step &gt; 2 ? 'done' : '' }}">
                         <div class="rw-step-number">
-                            <t t-if="state.step > 2"><i class="fa fa-check"/></t>
+                            <t t-if="state.step &gt; 2"><i class="fa fa-check"/></t>
                             <t t-else="">2</t>
                         </div>
                         <div class="rw-step-label">Líneas</div>
                     </div>
-                    <div class="rw-step-connector" t-attf-class="{{ state.step > 2 ? 'active' : '' }}"/>
-                    <div t-attf-class="rw-step {{ state.step >= 3 ? 'active' : '' }}">
+                    <div t-attf-class="rw-step-connector {{ state.step &gt; 2 ? 'active' : '' }}"/>
+                    <div t-attf-class="rw-step {{ state.step &gt;= 3 ? 'active' : '' }}">
                         <div class="rw-step-number">3</div>
                         <div class="rw-step-label">Confirmar</div>
                     </div>
@@ -37,32 +37,38 @@
                 <!-- ==================== STEP 1: Configuration ==================== -->
                 <div t-if="state.step === 1" class="rw-content">
                     <div class="rw-two-cols">
-                        <!-- Left column: Type + Reason -->
+                        <!-- Left column -->
                         <div class="rw-col">
                             <div class="rw-section-title">Tipo de Reposición</div>
                             <div class="rw-type-cards">
                                 <div t-attf-class="rw-type-card {{ state.replacementType === 'same_product' ? 'selected' : '' }}"
-                                     t-on-click="() => { state.replacementType = 'same_product'; }">
+                                     t-on-click="() =&gt; this.state.replacementType = 'same_product'">
                                     <i class="fa fa-refresh"/>
-                                    <div class="rw-type-card-title">Mismo producto</div>
-                                    <div class="rw-type-card-desc">Reponer los mismos m² con otras placas</div>
+                                    <div>
+                                        <div class="rw-type-card-title">Mismo producto</div>
+                                        <div class="rw-type-card-desc">Reponer los mismos m² con otras placas</div>
+                                    </div>
                                 </div>
                                 <div t-attf-class="rw-type-card {{ state.replacementType === 'different_product' ? 'selected' : '' }}"
-                                     t-on-click="() => { state.replacementType = 'different_product'; }">
+                                     t-on-click="() =&gt; this.state.replacementType = 'different_product'">
                                     <i class="fa fa-exchange"/>
-                                    <div class="rw-type-card-title">Cambio de producto</div>
-                                    <div class="rw-type-card-desc">Cambiar por otro material diferente</div>
+                                    <div>
+                                        <div class="rw-type-card-title">Cambio de producto</div>
+                                        <div class="rw-type-card-desc">Cambiar por otro material diferente</div>
+                                    </div>
                                 </div>
                                 <div t-attf-class="rw-type-card {{ state.replacementType === 'refund' ? 'selected' : '' }}"
-                                     t-on-click="() => { state.replacementType = 'refund'; }">
+                                     t-on-click="() =&gt; this.state.replacementType = 'refund'">
                                     <i class="fa fa-money"/>
-                                    <div class="rw-type-card-title">Devolución de dinero</div>
-                                    <div class="rw-type-card-desc">Sin reposición, solo reembolso</div>
+                                    <div>
+                                        <div class="rw-type-card-title">Devolución de dinero</div>
+                                        <div class="rw-type-card-desc">Sin reposición, solo reembolso</div>
+                                    </div>
                                 </div>
                             </div>
 
                             <div class="rw-section-title mt-3">Motivo</div>
-                            <select class="rw-select" t-on-change="(ev) => { state.replacementReasonId = parseInt(ev.target.value) || false; }">
+                            <select class="rw-select" t-on-change="(ev) =&gt; this.state.replacementReasonId = parseInt(ev.target.value) || false">
                                 <option value="">— Seleccionar motivo —</option>
                                 <t t-foreach="state.replacementReasons" t-as="reason" t-key="reason.id">
                                     <option t-att-value="reason.id"
@@ -77,7 +83,7 @@
                                 <label class="rw-toggle">
                                     <input type="checkbox"
                                            t-att-checked="state.chargeCustomer"
-                                           t-on-change="(ev) => { state.chargeCustomer = ev.target.checked; }"/>
+                                           t-on-change="(ev) =&gt; this.state.chargeCustomer = ev.target.checked"/>
                                     <span class="rw-toggle-slider"/>
                                 </label>
                                 <span>Cobrar diferencia al cliente</span>
@@ -86,11 +92,11 @@
                                 <input type="text" class="rw-input mt-2"
                                        placeholder="Motivo de no cobro..."
                                        t-att-value="state.noChargeReason"
-                                       t-on-input="(ev) => { state.noChargeReason = ev.target.value; }"/>
+                                       t-on-input="(ev) =&gt; this.state.noChargeReason = ev.target.value"/>
                             </t>
                         </div>
 
-                        <!-- Right column: Returns selection -->
+                        <!-- Right column -->
                         <div class="rw-col">
                             <div class="rw-section-title">
                                 Devoluciones a reponer
@@ -102,7 +108,7 @@
                                 <p>No hay devoluciones disponibles</p>
                             </div>
 
-                            <t t-if="state.availableReturns.length > 0">
+                            <t t-if="state.availableReturns.length &gt; 0">
                                 <div class="rw-select-all" t-on-click="selectAllReturns">
                                     <input type="checkbox" t-att-checked="allReturnsSelected" readonly="1"/>
                                     <span>Seleccionar todas</span>
@@ -110,7 +116,7 @@
                                 <div class="rw-return-list">
                                     <t t-foreach="state.availableReturns" t-as="ret" t-key="ret.id">
                                         <div t-attf-class="rw-return-card {{ isReturnSelected(ret.id) ? 'selected' : '' }}"
-                                             t-on-click="() => this.toggleReturn(ret.id)">
+                                             t-on-click="() =&gt; this.toggleReturn(ret.id)">
                                             <div class="rw-return-check">
                                                 <input type="checkbox" t-att-checked="isReturnSelected(ret.id)" readonly="1"/>
                                             </div>
@@ -131,7 +137,6 @@
                         </div>
                     </div>
 
-                    <!-- Step 1 footer -->
                     <div class="rw-footer">
                         <button class="rw-btn rw-btn-secondary" t-on-click="props.close">Cancelar</button>
                         <button t-attf-class="rw-btn rw-btn-primary {{ !canGoStep2 ? 'disabled' : '' }}"
@@ -178,7 +183,7 @@
                                                 <input type="text" class="rw-input rw-input-sm"
                                                        placeholder="ID producto..."
                                                        t-att-value="line.replacementProductId || ''"
-                                                       t-on-change="(ev) => this.onLineProductChange(line_index, ev)"/>
+                                                       t-on-change="(ev) =&gt; this.onLineProductChange(line_index, ev)"/>
                                                 <div t-if="line.replacementProductName" class="rw-product-hint"
                                                      t-esc="line.replacementProductName"/>
                                             </t>
@@ -187,7 +192,7 @@
                                             <input type="number" class="rw-input rw-input-num"
                                                    step="0.01" min="0"
                                                    t-att-value="line.m2ToReplace"
-                                                   t-on-change="(ev) => this.onLineM2Change(line_index, ev)"/>
+                                                   t-on-change="(ev) =&gt; this.onLineM2Change(line_index, ev)"/>
                                         </td>
                                         <td class="text-end">
                                             <span t-esc="formatCurrency(line.originalUnitPrice)"/>
@@ -196,11 +201,12 @@
                                             <input type="number" class="rw-input rw-input-num"
                                                    step="0.01" min="0"
                                                    t-att-value="line.replacementUnitPrice"
-                                                   t-on-change="(ev) => this.onLinePriceChange(line_index, ev)"/>
+                                                   t-on-change="(ev) =&gt; this.onLinePriceChange(line_index, ev)"/>
                                         </td>
                                         <td class="text-end">
-                                            <span t-attf-class="rw-diff {{ (line.m2ToReplace * line.replacementUnitPrice - line.m2Returned * line.originalUnitPrice) &lt; 0 ? 'negative' : 'positive' }}"
-                                                  t-esc="formatCurrency(line.m2ToReplace * line.replacementUnitPrice - line.m2Returned * line.originalUnitPrice)"/>
+                                            <t t-set="lineDiff" t-value="line.m2ToReplace * line.replacementUnitPrice - line.m2Returned * line.originalUnitPrice"/>
+                                            <span t-attf-class="rw-diff {{ lineDiff &lt; 0 ? 'negative' : 'positive' }}"
+                                                  t-esc="formatCurrency(lineDiff)"/>
                                         </td>
                                     </tr>
                                 </t>
@@ -223,7 +229,7 @@
                     </div>
 
                     <div class="rw-footer">
-                        <button class="rw-btn rw-btn-secondary" t-on-click="() => this.goBack(1)">
+                        <button class="rw-btn rw-btn-secondary" t-on-click="() =&gt; this.goBack(1)">
                             <i class="fa fa-arrow-left me-1"/> Atrás
                         </button>
                         <button t-attf-class="rw-btn rw-btn-primary {{ !canGoStep3 ? 'disabled' : '' }}"
@@ -297,7 +303,7 @@
                     </div>
 
                     <div class="rw-footer">
-                        <button class="rw-btn rw-btn-secondary" t-on-click="() => this.goBack(2)">
+                        <button class="rw-btn rw-btn-secondary" t-on-click="() =&gt; this.goBack(2)">
                             <i class="fa fa-arrow-left me-1"/> Atrás
                         </button>
                         <button class="rw-btn rw-btn-confirm" t-on-click="onConfirm">

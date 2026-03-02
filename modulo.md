@@ -8,7 +8,7 @@ from . import wizards
 ```py
 {
     'name': 'Reposición de Materiales',
-    'version': '19.0.1.0.0',
+    'version': '19.0.1.1.0',
     'category': 'Sales',
     'summary': 'Gestión de devoluciones y reposiciones de materiales con trazabilidad completa',
     'description': """
@@ -44,12 +44,19 @@ from . import wizards
         'wizards/scrap_from_return_wizard_views.xml',
         'report/replacement_report_views.xml',
     ],
+    'assets': {
+        'web.assets_backend': [
+            'stonia_replacements/static/src/css/replacement_wizard.css',
+            'stonia_replacements/static/src/js/replacement_wizard_dialog.js',
+            'stonia_replacements/static/src/js/sale_order_replacement_hook.js',
+            'stonia_replacements/static/src/xml/replacement_wizard_dialog.xml',
+        ],
+    },
     'installable': True,
     'application': False,
     'auto_install': False,
     'license': 'LGPL-3',
-}
-```
+}```
 
 ## ./data/replacement_reason_data.xml
 ```xml
@@ -563,6 +570,7 @@ class SaleOrderLine(models.Model):
 ## ./models/sale_order.py
 ```py
 from odoo import models, fields, api, _
+from odoo.exceptions import UserError
 
 
 class SaleOrder(models.Model):
@@ -586,7 +594,6 @@ class SaleOrder(models.Model):
         compute='_compute_return_pickings',
         string='Devoluciones',
     )
-    # Resumen comercial
     total_m2_sold = fields.Float(
         string='m² vendidos',
         compute='_compute_m2_summary',
@@ -610,17 +617,9 @@ class SaleOrder(models.Model):
             order.replacement_count = len(order.replacement_order_ids)
 
     def _get_return_pickings(self):
-        """Obtener devoluciones: pickings de entrada ligados a este pedido.
-        Detecta tanto las creadas por nuestro wizard (is_return_from_delivery)
-        como las creadas por el return wizard estándar de Odoo (incoming + origin referenciando un OUT).
-        """
+        """Get returns: both custom-flagged and standard Odoo incoming pickings."""
         self.ensure_one()
-        # 1) Nuestras devoluciones marcadas explícitamente
         marked_returns = self.picking_ids.filtered(lambda p: p.is_return_from_delivery)
-
-        # 2) Devoluciones estándar de Odoo: pickings incoming ligados al SO
-        #    que tienen origin con "Return of" o "Devolución de" o cuyo
-        #    picking_type_code es incoming
         standard_returns = self.picking_ids.filtered(
             lambda p: (
                 p.picking_type_code == 'incoming'
@@ -628,7 +627,6 @@ class SaleOrder(models.Model):
                 and p.state != 'cancel'
             )
         )
-
         return marked_returns | standard_returns
 
     @api.depends('picking_ids', 'picking_ids.state', 'picking_ids.picking_type_code',
@@ -651,7 +649,6 @@ class SaleOrder(models.Model):
             )
 
     def action_open_replacements(self):
-        """Abrir lista de reposiciones del pedido."""
         self.ensure_one()
         action = {
             'type': 'ir.actions.act_window',
@@ -670,7 +667,6 @@ class SaleOrder(models.Model):
         return action
 
     def action_open_returns(self):
-        """Abrir devoluciones del pedido."""
         self.ensure_one()
         returns = self._get_return_pickings()
         return {
@@ -682,20 +678,17 @@ class SaleOrder(models.Model):
         }
 
     def action_create_replacement(self):
-        """Abrir wizard para crear reposición de materiales."""
+        """Button action — intercepted by JS to open OWL dialog.
+        Kept as fallback in case JS fails."""
         self.ensure_one()
-        # Buscar devoluciones validadas (nuestras + estándar de Odoo)
-        returns = self._get_return_pickings().filtered(
-            lambda p: p.state == 'done'
-        )
+        returns = self._get_return_pickings().filtered(lambda p: p.state == 'done')
         if not returns:
             return {
                 'type': 'ir.actions.client',
                 'tag': 'display_notification',
                 'params': {
                     'title': _('Sin devoluciones'),
-                    'message': _('No hay devoluciones validadas para este pedido. '
-                                 'Primero debe registrar una devolución.'),
+                    'message': _('No hay devoluciones validadas para este pedido.'),
                     'type': 'warning',
                     'sticky': False,
                 },
@@ -706,9 +699,122 @@ class SaleOrder(models.Model):
             'res_model': 'sale.replacement.wizard',
             'view_mode': 'form',
             'target': 'new',
-            'context': {
-                'default_sale_order_id': self.id,
-            },
+            'context': {'default_sale_order_id': self.id},
+        }
+
+    # ===================== RPC METHODS FOR OWL WIZARD =====================
+
+    @api.model
+    def get_available_returns(self, sale_order_id):
+        """RPC: Get available validated return pickings for a sale order."""
+        order = self.browse(sale_order_id)
+        if not order.exists():
+            return []
+        returns = order._get_return_pickings().filtered(lambda p: p.state == 'done')
+        result = []
+        for ret in returns:
+            total_m2 = sum(ret.move_ids.filtered(
+                lambda m: m.state == 'done'
+            ).mapped('quantity'))
+            result.append({
+                'id': ret.id,
+                'name': ret.name,
+                'origin': ret.origin or '',
+                'date': ret.scheduled_date.strftime('%d/%m/%Y') if ret.scheduled_date else '',
+                'state': ret.state,
+                'total_m2': total_m2,
+                'return_reason': ret.return_reason_id.name if ret.return_reason_id else '',
+                'is_logistics': ret.is_logistics_return,
+            })
+        return result
+
+    @api.model
+    def get_return_lines_for_replacement(self, sale_order_id, return_picking_ids):
+        """RPC: Get detailed move lines from selected return pickings."""
+        pickings = self.env['stock.picking'].browse(return_picking_ids)
+        lines = []
+        for picking in pickings:
+            for move in picking.move_ids.filtered(lambda m: m.state == 'done'):
+                sale_line = move.sale_line_id
+                original_price = sale_line.price_unit if sale_line else 0.0
+                for move_line in move.move_line_ids:
+                    lines.append({
+                        'productId': move.product_id.id,
+                        'productName': move.product_id.display_name,
+                        'lotId': move_line.lot_id.id if move_line.lot_id else False,
+                        'lotName': move_line.lot_id.name if move_line.lot_id else '',
+                        'm2Returned': move_line.quantity,
+                        'originalUnitPrice': original_price,
+                        'moveId': move.id,
+                        'saleLineId': sale_line.id if sale_line else False,
+                        'pickingId': picking.id,
+                        'pickingName': picking.name,
+                    })
+        return lines
+
+    @api.model
+    def create_replacement_from_wizard(self, sale_order_id, payload):
+        """RPC: Create replacement order from OWL wizard data."""
+        order = self.browse(sale_order_id)
+        if not order.exists():
+            raise UserError(_('Pedido de venta no encontrado.'))
+
+        replacement_type = payload.get('replacement_type')
+        lines_data = payload.get('lines', [])
+
+        # Validate no zero prices (unless admin)
+        if replacement_type != 'refund':
+            zero_lines = [l for l in lines_data
+                          if l.get('replacement_unit_price', 0) <= 0
+                          and l.get('m2_to_replace', 0) > 0]
+            if zero_lines and not self.env.user.has_group(
+                'stonia_replacements.group_replacement_admin'
+            ):
+                raise UserError(_(
+                    'No se permite crear reposiciones con precio $0.00. '
+                    'Las diferencias deben manejarse con notas de crédito.'
+                ))
+
+        # Mark return pickings
+        return_picking_ids = payload.get('return_picking_ids', [])
+        for picking in self.env['stock.picking'].browse(return_picking_ids):
+            if not picking.is_return_from_delivery:
+                picking.is_return_from_delivery = True
+
+        # Create replacement order
+        replacement = self.env['sale.replacement.order'].create({
+            'sale_order_id': sale_order_id,
+            'return_picking_ids': [(6, 0, return_picking_ids)],
+            'replacement_type': replacement_type,
+            'replacement_reason_id': payload.get('replacement_reason_id'),
+            'charge_difference': payload.get('charge_difference', False),
+            'no_charge_reason': payload.get('no_charge_reason', ''),
+        })
+
+        # Create lines
+        for line in lines_data:
+            vals = {
+                'replacement_order_id': replacement.id,
+                'original_product_id': line.get('product_id'),
+                'm2_returned': line.get('m2_returned', 0),
+                'product_id': line.get('replacement_product_id') or line.get('product_id'),
+                'm2_replaced': line.get('m2_to_replace', 0),
+                'original_unit_price': line.get('original_unit_price', 0),
+                'unit_price': line.get('replacement_unit_price', 0),
+                'sale_line_id': line.get('sale_line_id'),
+                'return_move_id': line.get('move_id'),
+            }
+            lot_id = line.get('lot_id')
+            if lot_id:
+                vals['original_lot_ids'] = [(6, 0, [lot_id])]
+            self.env['sale.replacement.order.line'].create(vals)
+
+        # Confirm
+        replacement.action_confirm()
+
+        return {
+            'replacement_id': replacement.id,
+            'name': replacement.name,
         }```
 
 ## ./models/stock_move.py
@@ -874,6 +980,669 @@ class StockPicking(models.Model):
         <field name="comment">Puede crear reposiciones con precio cero y acciones especiales.</field>
     </record>
 </odoo>```
+
+## ./static/src/js/replacement_wizard_dialog.js
+```js
+/** @odoo-module **/
+
+import { Component, useState, onWillStart } from "@odoo/owl";
+import { registry } from "@web/core/registry";
+import { useService } from "@web/core/utils/hooks";
+import { Dialog } from "@web/core/dialog/dialog";
+import { _t } from "@web/core/l10n/translation";
+
+export class ReplacementWizardDialog extends Component {
+    static template = "stonia_replacements.ReplacementWizardDialog";
+    static components = { Dialog };
+    static props = {
+        saleOrderId: Number,
+        saleOrderName: { type: String, optional: true },
+        close: Function,
+    };
+
+    setup() {
+        this.orm = useService("orm");
+        this.action = useService("action");
+        this.notification = useService("notification");
+
+        this.state = useState({
+            // Step control
+            step: 1, // 1: config, 2: lines, 3: review
+            loading: false,
+
+            // Step 1 fields
+            replacementType: "same_product",
+            replacementReasonId: false,
+            chargeCustomer: false,
+            noChargeReason: "",
+            selectedReturnIds: [],
+
+            // Data
+            availableReturns: [],
+            replacementReasons: [],
+            lines: [],
+
+            // Totals
+            totalM2Returned: 0,
+            totalM2Replaced: 0,
+            totalDifference: 0,
+        });
+
+        onWillStart(async () => {
+            await this._loadInitialData();
+        });
+    }
+
+    async _loadInitialData() {
+        this.state.loading = true;
+        try {
+            // Load available returns
+            const returns = await this.orm.call(
+                "sale.order",
+                "get_available_returns",
+                [this.props.saleOrderId],
+            );
+            this.state.availableReturns = returns;
+
+            // Load replacement reasons
+            const reasons = await this.orm.searchRead(
+                "stock.replacement.reason",
+                [["active", "=", true]],
+                ["id", "name", "code"],
+                { order: "sequence, id" },
+            );
+            this.state.replacementReasons = reasons;
+        } catch (e) {
+            this.notification.add(_t("Error cargando datos: ") + e.message, {
+                type: "danger",
+            });
+        }
+        this.state.loading = false;
+    }
+
+    // --- Step navigation ---
+    get canGoStep2() {
+        return (
+            this.state.selectedReturnIds.length > 0 &&
+            this.state.replacementReasonId &&
+            (this.state.chargeCustomer || this.state.noChargeReason.trim())
+        );
+    }
+
+    get canGoStep3() {
+        return this.state.lines.some((l) => l.m2ToReplace > 0);
+    }
+
+    async goToStep2() {
+        if (!this.canGoStep2) return;
+        this.state.loading = true;
+        try {
+            const linesData = await this.orm.call(
+                "sale.order",
+                "get_return_lines_for_replacement",
+                [this.props.saleOrderId, this.state.selectedReturnIds],
+            );
+            this.state.lines = linesData.map((l) => ({
+                ...l,
+                replacementProductId: this.state.replacementType === "same_product" ? l.productId : false,
+                replacementProductName: this.state.replacementType === "same_product" ? l.productName : "",
+                m2ToReplace: this.state.replacementType === "refund" ? 0 : l.m2Returned,
+                replacementUnitPrice:
+                    this.state.replacementType === "same_product" ? l.originalUnitPrice : 0,
+            }));
+            this._recalcTotals();
+            this.state.step = 2;
+        } catch (e) {
+            this.notification.add(_t("Error cargando líneas: ") + e.message, {
+                type: "danger",
+            });
+        }
+        this.state.loading = false;
+    }
+
+    goToStep3() {
+        if (!this.canGoStep3) return;
+        this._recalcTotals();
+        this.state.step = 3;
+    }
+
+    goBack(step) {
+        this.state.step = step;
+    }
+
+    // --- Return selection ---
+    toggleReturn(returnId) {
+        const idx = this.state.selectedReturnIds.indexOf(returnId);
+        if (idx >= 0) {
+            this.state.selectedReturnIds.splice(idx, 1);
+        } else {
+            this.state.selectedReturnIds.push(returnId);
+        }
+    }
+
+    isReturnSelected(returnId) {
+        return this.state.selectedReturnIds.includes(returnId);
+    }
+
+    selectAllReturns() {
+        if (this.state.selectedReturnIds.length === this.state.availableReturns.length) {
+            this.state.selectedReturnIds = [];
+        } else {
+            this.state.selectedReturnIds = this.state.availableReturns.map((r) => r.id);
+        }
+    }
+
+    get allReturnsSelected() {
+        return (
+            this.state.availableReturns.length > 0 &&
+            this.state.selectedReturnIds.length === this.state.availableReturns.length
+        );
+    }
+
+    // --- Line editing ---
+    onLineM2Change(index, ev) {
+        const val = parseFloat(ev.target.value) || 0;
+        this.state.lines[index].m2ToReplace = val;
+        this._recalcTotals();
+    }
+
+    onLinePriceChange(index, ev) {
+        const val = parseFloat(ev.target.value) || 0;
+        this.state.lines[index].replacementUnitPrice = val;
+        this._recalcTotals();
+    }
+
+    async onLineProductChange(index, ev) {
+        const productId = parseInt(ev.target.value) || false;
+        if (productId) {
+            const products = await this.orm.read("product.product", [productId], [
+                "display_name",
+                "list_price",
+            ]);
+            if (products.length) {
+                this.state.lines[index].replacementProductId = productId;
+                this.state.lines[index].replacementProductName = products[0].display_name;
+                this.state.lines[index].replacementUnitPrice = products[0].list_price;
+            }
+        }
+        this._recalcTotals();
+    }
+
+    _recalcTotals() {
+        let totalReturned = 0;
+        let totalReplaced = 0;
+        let totalDiff = 0;
+        for (const line of this.state.lines) {
+            totalReturned += line.m2Returned;
+            totalReplaced += line.m2ToReplace;
+            const origAmount = line.m2Returned * line.originalUnitPrice;
+            const replAmount = line.m2ToReplace * line.replacementUnitPrice;
+            totalDiff += replAmount - origAmount;
+        }
+        this.state.totalM2Returned = totalReturned;
+        this.state.totalM2Replaced = totalReplaced;
+        this.state.totalDifference = totalDiff;
+    }
+
+    // --- Labels ---
+    get replacementTypeLabel() {
+        const labels = {
+            same_product: "Reposición mismo producto",
+            different_product: "Cambio a otro producto",
+            refund: "Devolución de dinero",
+        };
+        return labels[this.state.replacementType] || "";
+    }
+
+    get reasonLabel() {
+        const r = this.state.replacementReasons.find(
+            (x) => x.id === this.state.replacementReasonId,
+        );
+        return r ? r.name : "";
+    }
+
+    get isRefund() {
+        return this.state.replacementType === "refund";
+    }
+
+    formatCurrency(val) {
+        return "$" + (val || 0).toFixed(2);
+    }
+
+    formatM2(val) {
+        return (val || 0).toFixed(2) + " m²";
+    }
+
+    // --- Submit ---
+    async onConfirm() {
+        this.state.loading = true;
+        try {
+            const payload = {
+                sale_order_id: this.props.saleOrderId,
+                replacement_type: this.state.replacementType,
+                replacement_reason_id: this.state.replacementReasonId,
+                charge_difference: this.state.chargeCustomer,
+                no_charge_reason: this.state.noChargeReason,
+                return_picking_ids: this.state.selectedReturnIds,
+                lines: this.state.lines.map((l) => ({
+                    product_id: l.productId,
+                    replacement_product_id: l.replacementProductId || l.productId,
+                    lot_id: l.lotId,
+                    m2_returned: l.m2Returned,
+                    m2_to_replace: l.m2ToReplace,
+                    original_unit_price: l.originalUnitPrice,
+                    replacement_unit_price: l.replacementUnitPrice,
+                    move_id: l.moveId,
+                    sale_line_id: l.saleLineId,
+                })),
+            };
+
+            const result = await this.orm.call(
+                "sale.order",
+                "create_replacement_from_wizard",
+                [this.props.saleOrderId, payload],
+            );
+
+            this.notification.add(_t("Reposición creada exitosamente"), {
+                type: "success",
+            });
+
+            this.props.close();
+
+            // Navigate to the created replacement
+            if (result && result.replacement_id) {
+                this.action.doAction({
+                    type: "ir.actions.act_window",
+                    res_model: "sale.replacement.order",
+                    res_id: result.replacement_id,
+                    views: [[false, "form"]],
+                    target: "current",
+                });
+            }
+        } catch (e) {
+            this.notification.add(_t("Error creando reposición: ") + (e.data?.message || e.message), {
+                type: "danger",
+                sticky: true,
+            });
+        }
+        this.state.loading = false;
+    }
+}
+
+// Register as client action for fallback
+registry.category("actions").add("stonia_replacement_wizard", ReplacementWizardDialog);```
+
+## ./static/src/js/sale_order_replacement_hook.js
+```js
+/** @odoo-module **/
+
+import { patch } from "@web/core/utils/patch";
+import { FormController } from "@web/views/form/form_controller";
+import { useService } from "@web/core/utils/hooks";
+import { ReplacementWizardDialog } from "./replacement_wizard_dialog";
+
+patch(FormController.prototype, {
+    setup() {
+        super.setup(...arguments);
+        this.__replacementDialog = useService("dialog");
+    },
+
+    async onWillSaveRecord(record) {
+        return super.onWillSaveRecord(...arguments);
+    },
+
+    /**
+     * Intercept the action_create_replacement button to open OWL dialog instead
+     */
+    async onButtonClicked(params) {
+        if (
+            params.name === "action_create_replacement" &&
+            this.props.resModel === "sale.order"
+        ) {
+            const record = this.model.root;
+            const saleOrderId = record.resId;
+            const saleOrderName = record.data.name || "";
+
+            // First check if there are returns available
+            const orm = this.env.services.orm;
+            const returns = await orm.call(
+                "sale.order",
+                "get_available_returns",
+                [saleOrderId],
+            );
+
+            if (!returns || returns.length === 0) {
+                this.env.services.notification.add(
+                    "No hay devoluciones validadas para este pedido. Primero debe registrar una devolución.",
+                    { title: "Sin devoluciones", type: "warning" },
+                );
+                return;
+            }
+
+            this.__replacementDialog.add(ReplacementWizardDialog, {
+                saleOrderId: saleOrderId,
+                saleOrderName: saleOrderName,
+            });
+            return;
+        }
+        return super.onButtonClicked(...arguments);
+    },
+});```
+
+## ./static/src/xml/replacement_wizard_dialog.xml
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <t t-name="stonia_replacements.ReplacementWizardDialog">
+        <Dialog title="'Reposición de Materiales'" size="'xl'" contentClass="'o_replacement_wizard'">
+            <div class="replacement-wizard">
+                <!-- Loading overlay -->
+                <div t-if="state.loading" class="rw-loading-overlay">
+                    <div class="rw-spinner"/>
+                    <span>Procesando...</span>
+                </div>
+
+                <!-- Step indicators -->
+                <div class="rw-steps">
+                    <div t-attf-class="rw-step {{ state.step >= 1 ? 'active' : '' }} {{ state.step > 1 ? 'done' : '' }}">
+                        <div class="rw-step-number">
+                            <t t-if="state.step > 1"><i class="fa fa-check"/></t>
+                            <t t-else="">1</t>
+                        </div>
+                        <div class="rw-step-label">Configuración</div>
+                    </div>
+                    <div class="rw-step-connector" t-attf-class="{{ state.step > 1 ? 'active' : '' }}"/>
+                    <div t-attf-class="rw-step {{ state.step >= 2 ? 'active' : '' }} {{ state.step > 2 ? 'done' : '' }}">
+                        <div class="rw-step-number">
+                            <t t-if="state.step > 2"><i class="fa fa-check"/></t>
+                            <t t-else="">2</t>
+                        </div>
+                        <div class="rw-step-label">Líneas</div>
+                    </div>
+                    <div class="rw-step-connector" t-attf-class="{{ state.step > 2 ? 'active' : '' }}"/>
+                    <div t-attf-class="rw-step {{ state.step >= 3 ? 'active' : '' }}">
+                        <div class="rw-step-number">3</div>
+                        <div class="rw-step-label">Confirmar</div>
+                    </div>
+                </div>
+
+                <!-- ==================== STEP 1: Configuration ==================== -->
+                <div t-if="state.step === 1" class="rw-content">
+                    <div class="rw-two-cols">
+                        <!-- Left column: Type + Reason -->
+                        <div class="rw-col">
+                            <div class="rw-section-title">Tipo de Reposición</div>
+                            <div class="rw-type-cards">
+                                <div t-attf-class="rw-type-card {{ state.replacementType === 'same_product' ? 'selected' : '' }}"
+                                     t-on-click="() => { state.replacementType = 'same_product'; }">
+                                    <i class="fa fa-refresh"/>
+                                    <div class="rw-type-card-title">Mismo producto</div>
+                                    <div class="rw-type-card-desc">Reponer los mismos m² con otras placas</div>
+                                </div>
+                                <div t-attf-class="rw-type-card {{ state.replacementType === 'different_product' ? 'selected' : '' }}"
+                                     t-on-click="() => { state.replacementType = 'different_product'; }">
+                                    <i class="fa fa-exchange"/>
+                                    <div class="rw-type-card-title">Cambio de producto</div>
+                                    <div class="rw-type-card-desc">Cambiar por otro material diferente</div>
+                                </div>
+                                <div t-attf-class="rw-type-card {{ state.replacementType === 'refund' ? 'selected' : '' }}"
+                                     t-on-click="() => { state.replacementType = 'refund'; }">
+                                    <i class="fa fa-money"/>
+                                    <div class="rw-type-card-title">Devolución de dinero</div>
+                                    <div class="rw-type-card-desc">Sin reposición, solo reembolso</div>
+                                </div>
+                            </div>
+
+                            <div class="rw-section-title mt-3">Motivo</div>
+                            <select class="rw-select" t-on-change="(ev) => { state.replacementReasonId = parseInt(ev.target.value) || false; }">
+                                <option value="">— Seleccionar motivo —</option>
+                                <t t-foreach="state.replacementReasons" t-as="reason" t-key="reason.id">
+                                    <option t-att-value="reason.id"
+                                            t-att-selected="state.replacementReasonId === reason.id">
+                                        <t t-esc="reason.name"/>
+                                    </option>
+                                </t>
+                            </select>
+
+                            <div class="rw-section-title mt-3">Cobro de diferencia</div>
+                            <div class="rw-toggle-row">
+                                <label class="rw-toggle">
+                                    <input type="checkbox"
+                                           t-att-checked="state.chargeCustomer"
+                                           t-on-change="(ev) => { state.chargeCustomer = ev.target.checked; }"/>
+                                    <span class="rw-toggle-slider"/>
+                                </label>
+                                <span>Cobrar diferencia al cliente</span>
+                            </div>
+                            <t t-if="!state.chargeCustomer">
+                                <input type="text" class="rw-input mt-2"
+                                       placeholder="Motivo de no cobro..."
+                                       t-att-value="state.noChargeReason"
+                                       t-on-input="(ev) => { state.noChargeReason = ev.target.value; }"/>
+                            </t>
+                        </div>
+
+                        <!-- Right column: Returns selection -->
+                        <div class="rw-col">
+                            <div class="rw-section-title">
+                                Devoluciones a reponer
+                                <span class="rw-badge" t-esc="state.selectedReturnIds.length + '/' + state.availableReturns.length"/>
+                            </div>
+
+                            <div t-if="state.availableReturns.length === 0" class="rw-empty">
+                                <i class="fa fa-inbox fa-3x"/>
+                                <p>No hay devoluciones disponibles</p>
+                            </div>
+
+                            <t t-if="state.availableReturns.length > 0">
+                                <div class="rw-select-all" t-on-click="selectAllReturns">
+                                    <input type="checkbox" t-att-checked="allReturnsSelected" readonly="1"/>
+                                    <span>Seleccionar todas</span>
+                                </div>
+                                <div class="rw-return-list">
+                                    <t t-foreach="state.availableReturns" t-as="ret" t-key="ret.id">
+                                        <div t-attf-class="rw-return-card {{ isReturnSelected(ret.id) ? 'selected' : '' }}"
+                                             t-on-click="() => this.toggleReturn(ret.id)">
+                                            <div class="rw-return-check">
+                                                <input type="checkbox" t-att-checked="isReturnSelected(ret.id)" readonly="1"/>
+                                            </div>
+                                            <div class="rw-return-info">
+                                                <div class="rw-return-name" t-esc="ret.name"/>
+                                                <div class="rw-return-detail">
+                                                    <span t-esc="ret.origin || ''"/>
+                                                    <span class="rw-return-date" t-esc="ret.date"/>
+                                                </div>
+                                            </div>
+                                            <div class="rw-return-m2">
+                                                <span t-esc="(ret.total_m2 || 0).toFixed(2)"/> m²
+                                            </div>
+                                        </div>
+                                    </t>
+                                </div>
+                            </t>
+                        </div>
+                    </div>
+
+                    <!-- Step 1 footer -->
+                    <div class="rw-footer">
+                        <button class="rw-btn rw-btn-secondary" t-on-click="props.close">Cancelar</button>
+                        <button t-attf-class="rw-btn rw-btn-primary {{ !canGoStep2 ? 'disabled' : '' }}"
+                                t-on-click="goToStep2">
+                            Siguiente <i class="fa fa-arrow-right ms-1"/>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ==================== STEP 2: Lines ==================== -->
+                <div t-if="state.step === 2" class="rw-content">
+                    <div class="rw-table-wrapper">
+                        <table class="rw-table">
+                            <thead>
+                                <tr>
+                                    <th>Producto Original</th>
+                                    <th>Lote</th>
+                                    <th class="text-end">m² Devueltos</th>
+                                    <th t-if="!isRefund">Producto Reposición</th>
+                                    <th t-if="!isRefund" class="text-end">m² a Reponer</th>
+                                    <th class="text-end">Precio Orig.</th>
+                                    <th t-if="!isRefund" class="text-end">Precio Repos.</th>
+                                    <th class="text-end">Diferencia</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <t t-foreach="state.lines" t-as="line" t-key="line_index">
+                                    <tr>
+                                        <td>
+                                            <span class="rw-product-name" t-esc="line.productName"/>
+                                        </td>
+                                        <td>
+                                            <span class="rw-lot-tag" t-if="line.lotName" t-esc="line.lotName"/>
+                                            <span t-else="" class="text-muted">—</span>
+                                        </td>
+                                        <td class="text-end">
+                                            <span class="rw-m2-val" t-esc="line.m2Returned.toFixed(2)"/>
+                                        </td>
+                                        <td t-if="!isRefund">
+                                            <t t-if="state.replacementType === 'same_product'">
+                                                <span t-esc="line.productName"/>
+                                            </t>
+                                            <t t-else="">
+                                                <input type="text" class="rw-input rw-input-sm"
+                                                       placeholder="ID producto..."
+                                                       t-att-value="line.replacementProductId || ''"
+                                                       t-on-change="(ev) => this.onLineProductChange(line_index, ev)"/>
+                                                <div t-if="line.replacementProductName" class="rw-product-hint"
+                                                     t-esc="line.replacementProductName"/>
+                                            </t>
+                                        </td>
+                                        <td t-if="!isRefund" class="text-end">
+                                            <input type="number" class="rw-input rw-input-num"
+                                                   step="0.01" min="0"
+                                                   t-att-value="line.m2ToReplace"
+                                                   t-on-change="(ev) => this.onLineM2Change(line_index, ev)"/>
+                                        </td>
+                                        <td class="text-end">
+                                            <span t-esc="formatCurrency(line.originalUnitPrice)"/>
+                                        </td>
+                                        <td t-if="!isRefund" class="text-end">
+                                            <input type="number" class="rw-input rw-input-num"
+                                                   step="0.01" min="0"
+                                                   t-att-value="line.replacementUnitPrice"
+                                                   t-on-change="(ev) => this.onLinePriceChange(line_index, ev)"/>
+                                        </td>
+                                        <td class="text-end">
+                                            <span t-attf-class="rw-diff {{ (line.m2ToReplace * line.replacementUnitPrice - line.m2Returned * line.originalUnitPrice) &lt; 0 ? 'negative' : 'positive' }}"
+                                                  t-esc="formatCurrency(line.m2ToReplace * line.replacementUnitPrice - line.m2Returned * line.originalUnitPrice)"/>
+                                        </td>
+                                    </tr>
+                                </t>
+                            </tbody>
+                            <tfoot>
+                                <tr class="rw-totals-row">
+                                    <td colspan="2"><strong>Totales</strong></td>
+                                    <td class="text-end"><strong t-esc="formatM2(state.totalM2Returned)"/></td>
+                                    <td t-if="!isRefund"/>
+                                    <td t-if="!isRefund" class="text-end"><strong t-esc="formatM2(state.totalM2Replaced)"/></td>
+                                    <td/>
+                                    <td t-if="!isRefund"/>
+                                    <td class="text-end">
+                                        <strong t-attf-class="rw-diff {{ state.totalDifference &lt; 0 ? 'negative' : 'positive' }}"
+                                                t-esc="formatCurrency(state.totalDifference)"/>
+                                    </td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+
+                    <div class="rw-footer">
+                        <button class="rw-btn rw-btn-secondary" t-on-click="() => this.goBack(1)">
+                            <i class="fa fa-arrow-left me-1"/> Atrás
+                        </button>
+                        <button t-attf-class="rw-btn rw-btn-primary {{ !canGoStep3 ? 'disabled' : '' }}"
+                                t-on-click="goToStep3">
+                            Revisar <i class="fa fa-arrow-right ms-1"/>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ==================== STEP 3: Review + Confirm ==================== -->
+                <div t-if="state.step === 3" class="rw-content">
+                    <div class="rw-review">
+                        <div class="rw-review-header">
+                            <div class="rw-review-title">Resumen de Reposición</div>
+                            <div class="rw-review-so" t-esc="props.saleOrderName"/>
+                        </div>
+
+                        <div class="rw-review-grid">
+                            <div class="rw-review-card">
+                                <div class="rw-review-card-label">Tipo</div>
+                                <div class="rw-review-card-value" t-esc="replacementTypeLabel"/>
+                            </div>
+                            <div class="rw-review-card">
+                                <div class="rw-review-card-label">Motivo</div>
+                                <div class="rw-review-card-value" t-esc="reasonLabel"/>
+                            </div>
+                            <div class="rw-review-card">
+                                <div class="rw-review-card-label">Devoluciones</div>
+                                <div class="rw-review-card-value" t-esc="state.selectedReturnIds.length"/>
+                            </div>
+                            <div class="rw-review-card">
+                                <div class="rw-review-card-label">Cobrar diferencia</div>
+                                <div class="rw-review-card-value" t-esc="state.chargeCustomer ? 'Sí' : 'No'"/>
+                            </div>
+                        </div>
+
+                        <div class="rw-review-totals">
+                            <div class="rw-review-total-item">
+                                <span>m² Devueltos</span>
+                                <strong t-esc="formatM2(state.totalM2Returned)"/>
+                            </div>
+                            <t t-if="!isRefund">
+                                <div class="rw-review-total-item">
+                                    <span>m² a Reponer</span>
+                                    <strong t-esc="formatM2(state.totalM2Replaced)"/>
+                                </div>
+                            </t>
+                            <div class="rw-review-total-item highlight">
+                                <span>Diferencia total</span>
+                                <strong t-attf-class="rw-diff {{ state.totalDifference &lt; 0 ? 'negative' : 'positive' }}"
+                                        t-esc="formatCurrency(state.totalDifference)"/>
+                            </div>
+                        </div>
+
+                        <div class="rw-review-lines-title">
+                            <t t-esc="state.lines.length"/> líneas de reposición
+                        </div>
+                        <div class="rw-review-lines">
+                            <t t-foreach="state.lines" t-as="line" t-key="line_index">
+                                <div class="rw-review-line">
+                                    <div class="rw-review-line-product" t-esc="line.productName"/>
+                                    <div class="rw-review-line-detail">
+                                        <span t-esc="line.m2Returned.toFixed(2)"/> m² dev.
+                                        <t t-if="!isRefund">
+                                            → <span t-esc="line.m2ToReplace.toFixed(2)"/> m² rep.
+                                        </t>
+                                    </div>
+                                </div>
+                            </t>
+                        </div>
+                    </div>
+
+                    <div class="rw-footer">
+                        <button class="rw-btn rw-btn-secondary" t-on-click="() => this.goBack(2)">
+                            <i class="fa fa-arrow-left me-1"/> Atrás
+                        </button>
+                        <button class="rw-btn rw-btn-confirm" t-on-click="onConfirm">
+                            <i class="fa fa-check me-1"/> Confirmar Reposición
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </Dialog>
+    </t>
+
+</templates>```
 
 ## ./views/menu_views.xml
 ```xml

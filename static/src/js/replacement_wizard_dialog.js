@@ -19,25 +19,19 @@ export class ReplacementWizardDialog extends Component {
         this.orm = useService("orm");
         this.action = useService("action");
         this.notification = useService("notification");
+        this.dialogService = useService("dialog");
 
         this.state = useState({
-            // Step control
-            step: 1, // 1: config, 2: lines, 3: review
+            step: 1,
             loading: false,
-
-            // Step 1 fields
             replacementType: "same_product",
             replacementReasonId: false,
             chargeCustomer: false,
             noChargeReason: "",
             selectedReturnIds: [],
-
-            // Data
             availableReturns: [],
             replacementReasons: [],
             lines: [],
-
-            // Totals
             totalM2Returned: 0,
             totalM2Replaced: 0,
             totalDifference: 0,
@@ -48,10 +42,13 @@ export class ReplacementWizardDialog extends Component {
         });
     }
 
+    get dialogTitle() {
+        return _t("Reposición de Materiales");
+    }
+
     async _loadInitialData() {
         this.state.loading = true;
         try {
-            // Load available returns
             const returns = await this.orm.call(
                 "sale.order",
                 "get_available_returns",
@@ -59,7 +56,6 @@ export class ReplacementWizardDialog extends Component {
             );
             this.state.availableReturns = returns;
 
-            // Load replacement reasons
             const reasons = await this.orm.searchRead(
                 "stock.replacement.reason",
                 [["active", "=", true]],
@@ -75,7 +71,6 @@ export class ReplacementWizardDialog extends Component {
         this.state.loading = false;
     }
 
-    // --- Step navigation ---
     get canGoStep2() {
         return (
             this.state.selectedReturnIds.length > 0 &&
@@ -125,7 +120,6 @@ export class ReplacementWizardDialog extends Component {
         this.state.step = step;
     }
 
-    // --- Return selection ---
     toggleReturn(returnId) {
         const idx = this.state.selectedReturnIds.indexOf(returnId);
         if (idx >= 0) {
@@ -154,7 +148,6 @@ export class ReplacementWizardDialog extends Component {
         );
     }
 
-    // --- Line editing ---
     onLineM2Change(index, ev) {
         const val = parseFloat(ev.target.value) || 0;
         this.state.lines[index].m2ToReplace = val;
@@ -199,7 +192,6 @@ export class ReplacementWizardDialog extends Component {
         this.state.totalDifference = totalDiff;
     }
 
-    // --- Labels ---
     get replacementTypeLabel() {
         const labels = {
             same_product: "Reposición mismo producto",
@@ -228,7 +220,6 @@ export class ReplacementWizardDialog extends Component {
         return (val || 0).toFixed(2) + " m²";
     }
 
-    // --- Submit ---
     async onConfirm() {
         this.state.loading = true;
         try {
@@ -264,7 +255,6 @@ export class ReplacementWizardDialog extends Component {
 
             this.props.close();
 
-            // Navigate to the created replacement
             if (result && result.replacement_id) {
                 this.action.doAction({
                     type: "ir.actions.act_window",
@@ -283,6 +273,3 @@ export class ReplacementWizardDialog extends Component {
         this.state.loading = false;
     }
 }
-
-// Register as client action for fallback
-registry.category("actions").add("stonia_replacement_wizard", ReplacementWizardDialog);
