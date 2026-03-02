@@ -94,7 +94,6 @@ class StockReturnWizard(models.TransientModel):
 
         for line in lines_to_return:
             self.env['stock.move'].create({
-                'name': _('Devolución: %s') % line.product_id.display_name,
                 'product_id': line.product_id.id,
                 'product_uom_qty': line.qty_to_return,
                 'product_uom': line.product_id.uom_id.id,

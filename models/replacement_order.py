@@ -132,7 +132,6 @@ class ReplacementOrder(models.Model):
     @api.depends('return_picking_id', 'return_picking_ids')
     def _compute_original_invoiced(self):
         for rec in self:
-            # Check if any related SO invoice exists
             rec.original_invoiced = bool(rec.sale_order_id.invoice_ids.filtered(
                 lambda inv: inv.state == 'posted' and inv.move_type == 'out_invoice'
             ))
@@ -205,7 +204,6 @@ class ReplacementOrder(models.Model):
 
         for line in self.line_ids.filtered(lambda l: l.m2_replaced > 0):
             self.env['stock.move'].create({
-                'name': f'Reposición: {line.product_id.display_name}',
                 'product_id': line.product_id.id,
                 'product_uom_qty': line.m2_replaced,
                 'product_uom': line.product_id.uom_id.id,
