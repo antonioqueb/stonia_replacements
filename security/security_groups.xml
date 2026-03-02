@@ -1,25 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <record id="module_category_replacements" model="ir.module.category">
-        <field name="name">Reposiciones</field>
-        <field name="sequence">50</field>
-    </record>
-
     <record id="group_replacement_user" model="res.groups">
         <field name="name">Reposiciones: Usuario</field>
-        <field name="category_id" ref="module_category_replacements"/>
         <field name="implied_ids" eval="[(4, ref('base.group_user'))]"/>
     </record>
 
     <record id="group_replacement_manager" model="res.groups">
         <field name="name">Reposiciones: Responsable</field>
-        <field name="category_id" ref="module_category_replacements"/>
         <field name="implied_ids" eval="[(4, ref('group_replacement_user'))]"/>
     </record>
 
     <record id="group_replacement_admin" model="res.groups">
         <field name="name">Reposiciones: Administrador</field>
-        <field name="category_id" ref="module_category_replacements"/>
         <field name="implied_ids" eval="[(4, ref('group_replacement_manager'))]"/>
         <field name="comment">Puede crear reposiciones con precio cero y acciones especiales.</field>
     </record>
