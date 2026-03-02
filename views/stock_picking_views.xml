@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="stock_picking_form_inherit_replacements" model="ir.ui.view">
+        <field name="name">stock.picking.form.inherit.replacements</field>
+        <field name="model">stock.picking</field>
+        <field name="inherit_id" ref="stock.view_picking_form"/>
+        <field name="arch" type="xml">
+            <!-- Botones de devolución y scrap -->
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button name="action_create_return_wizard"
+                        type="object"
+                        class="oe_stat_button"
+                        icon="fa-undo"
+                        string="Devolver"
+                        invisible="state != 'done' or picking_type_code != 'outgoing'"
+                        groups="stonia_replacements.group_replacement_user"/>
+                <button name="action_scrap_from_return"
+                        type="object"
+                        class="oe_stat_button"
+                        icon="fa-trash"
+                        string="Desechar"
+                        invisible="is_return_from_delivery != True or state != 'done'"
+                        groups="stonia_replacements.group_replacement_user"/>
+            </xpath>
+
+            <!-- Campos de devolución -->
+            <xpath expr="//field[@name='origin']" position="after">
+                <field name="is_return_from_delivery" invisible="1"/>
+                <field name="is_replacement_delivery" invisible="1"/>
+                <field name="is_logistics_return" invisible="1"/>
+                <field name="return_reason_id"
+                       invisible="is_return_from_delivery != True"
+                       readonly="state == 'done'"/>
+                <field name="original_delivery_id"
+                       invisible="is_return_from_delivery != True"
+                       readonly="1"/>
+                <field name="replacement_order_id"
+                       invisible="is_replacement_delivery != True"
+                       readonly="1"/>
+            </xpath>
+
+            <!-- Banner retorno logístico -->
+            <xpath expr="//sheet" position="inside">
+                <div class="alert alert-warning text-center"
+                     role="alert"
+                     invisible="is_logistics_return != True">
+                    <strong>⚠️ RETORNO LOGÍSTICO</strong> — No se pudo descargar. 
+                    Este retorno NO genera nota de crédito automática.
+                </div>
+                <div class="alert alert-info text-center"
+                     role="alert"
+                     invisible="is_replacement_delivery != True">
+                    <strong>📦 ENTREGA DE REPOSICIÓN</strong> — Material de reemplazo.
+                </div>
+            </xpath>
+
+            <!-- Notas de devolución -->
+            <xpath expr="//page[@name='extra']" position="inside">
+                <group string="Información de Devolución"
+                       invisible="is_return_from_delivery != True">
+                    <field name="return_notes"/>
+                </group>
+            </xpath>
+        </field>
+    </record>
+</odoo>

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Menú bajo Ventas -->
+    <menuitem id="menu_replacements_root"
+              name="Reposiciones"
+              parent="sale.sale_order_menu"
+              sequence="30"
+              groups="stonia_replacements.group_replacement_user"/>
+
+    <menuitem id="menu_replacement_orders"
+              name="Órdenes de Reposición"
+              parent="menu_replacements_root"
+              action="action_replacement_order"
+              sequence="10"/>
+
+    <!-- Configuración bajo Ventas > Configuración -->
+    <menuitem id="menu_replacements_config"
+              name="Reposiciones"
+              parent="sale.menu_sale_config"
+              sequence="90"
+              groups="stonia_replacements.group_replacement_admin"/>
+
+    <menuitem id="menu_return_reasons"
+              name="Motivos de Devolución"
+              parent="menu_replacements_config"
+              action="action_return_reason"
+              sequence="10"/>
+
+    <menuitem id="menu_replacement_reasons"
+              name="Motivos de Reposición"
+              parent="menu_replacements_config"
+              action="action_replacement_reason"
+              sequence="20"/>
+</odoo>

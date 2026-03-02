@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_scrap_from_return_wizard_form" model="ir.ui.view">
+        <field name="name">stock.scrap.from.return.wizard.form</field>
+        <field name="model">stock.scrap.from.return.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Desechar desde Devolución">
+                <group>
+                    <field name="return_picking_id" readonly="1"/>
+                    <field name="scrap_reason" placeholder="Motivo del desecho (obligatorio)..."/>
+                </group>
+                <separator string="Material a Desechar"/>
+                <field name="line_ids">
+                    <list editable="bottom">
+                        <field name="to_scrap" widget="boolean_toggle"/>
+                        <field name="product_id" readonly="1"/>
+                        <field name="lot_id" readonly="1"/>
+                        <field name="qty_available" readonly="1"/>
+                        <field name="qty_to_scrap"/>
+                    </list>
+                </field>
+                <footer>
+                    <button name="action_scrap"
+                            string="Desechar Material"
+                            type="object"
+                            class="btn-danger"/>
+                    <button string="Cancelar" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+</odoo>

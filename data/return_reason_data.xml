@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <record id="return_reason_not_liked" model="stock.return.reason">
+            <field name="name">No le gustó al cliente</field>
+            <field name="code">NOT_LIKED</field>
+            <field name="sequence">10</field>
+        </record>
+        <record id="return_reason_defect" model="stock.return.reason">
+            <field name="name">Defectos en el material</field>
+            <field name="code">DEFECT</field>
+            <field name="sequence">20</field>
+        </record>
+        <record id="return_reason_broken" model="stock.return.reason">
+            <field name="name">Material roto/dañado</field>
+            <field name="code">BROKEN</field>
+            <field name="sequence">30</field>
+            <field name="requires_scrap" eval="True"/>
+        </record>
+        <record id="return_reason_broken_no_return" model="stock.return.reason">
+            <field name="name">Roto sin retorno (perdido en sitio)</field>
+            <field name="code">BROKEN_NR</field>
+            <field name="sequence">35</field>
+            <field name="requires_scrap" eval="True"/>
+            <field name="no_physical_return" eval="True"/>
+        </record>
+        <record id="return_reason_wrong_product" model="stock.return.reason">
+            <field name="name">Producto equivocado</field>
+            <field name="code">WRONG</field>
+            <field name="sequence">40</field>
+        </record>
+        <record id="return_reason_change" model="stock.return.reason">
+            <field name="name">Cambio de material (cliente)</field>
+            <field name="code">CHANGE</field>
+            <field name="sequence">50</field>
+        </record>
+        <record id="return_reason_not_unloaded" model="stock.return.reason">
+            <field name="name">No se pudo descargar (retorno logístico)</field>
+            <field name="code">LOGISTICS</field>
+            <field name="sequence">60</field>
+            <field name="is_logistics" eval="True"/>
+        </record>
+        <record id="return_reason_access_blocked" model="stock.return.reason">
+            <field name="name">Acceso bloqueado en sitio</field>
+            <field name="code">ACCESS</field>
+            <field name="sequence">70</field>
+            <field name="is_logistics" eval="True"/>
+        </record>
+    </data>
+</odoo>

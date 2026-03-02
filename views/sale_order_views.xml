@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Botones en SO -->
+    <record id="sale_order_form_inherit_replacements" model="ir.ui.view">
+        <field name="name">sale.order.form.inherit.replacements</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_form"/>
+        <field name="arch" type="xml">
+            <!-- Botón de Reposición arriba -->
+            <xpath expr="//field[@name='partner_id']/.." position="before">
+                <div class="oe_button_box" name="replacement_button_box">
+                    <button name="action_create_replacement"
+                            type="object"
+                            class="oe_stat_button btn-primary"
+                            icon="fa-refresh"
+                            string="Reposición de Materiales"
+                            invisible="state != 'sale'"
+                            groups="stonia_replacements.group_replacement_user"/>
+                    <button name="action_open_replacements"
+                            type="object"
+                            class="oe_stat_button"
+                            icon="fa-exchange"
+                            invisible="replacement_count == 0">
+                        <field name="replacement_count" widget="statinfo" string="Reposiciones"/>
+                    </button>
+                    <button name="action_open_returns"
+                            type="object"
+                            class="oe_stat_button"
+                            icon="fa-undo"
+                            invisible="return_count == 0">
+                        <field name="return_count" widget="statinfo" string="Devoluciones"/>
+                    </button>
+                </div>
+            </xpath>
+
+            <!-- Sección de Resumen m² -->
+            <xpath expr="//field[@name='note']" position="before">
+                <separator string="Resumen de Entregas y Reposiciones"
+                           invisible="replacement_count == 0"/>
+                <group invisible="replacement_count == 0">
+                    <group>
+                        <field name="total_m2_sold" readonly="1"/>
+                        <field name="total_m2_delivered" readonly="1"/>
+                    </group>
+                    <group>
+                        <field name="total_m2_returned" readonly="1"/>
+                        <field name="total_m2_replaced" readonly="1"/>
+                    </group>
+                </group>
+
+                <!-- Tabla de Reposiciones -->
+                <field name="replacement_order_ids"
+                       invisible="replacement_count == 0"
+                       readonly="1"
+                       nolabel="1">
+                    <list>
+                        <field name="name"/>
+                        <field name="replacement_type"/>
+                        <field name="replacement_reason_id"/>
+                        <field name="total_m2_returned"/>
+                        <field name="total_m2_replaced"/>
+                        <field name="total_amount_difference"/>
+                        <field name="state" widget="badge"
+                               decoration-success="state == 'done'"
+                               decoration-warning="state in ('picking_pending', 'accounting_pending')"
+                               decoration-info="state in ('draft', 'confirmed')"
+                               decoration-danger="state == 'cancelled'"/>
+                        <field name="accounting_state" widget="badge"
+                               decoration-success="accounting_state == 'done'"
+                               decoration-warning="accounting_state == 'pending'"/>
+                    </list>
+                </field>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Marcar líneas de reposición en la SO -->
+    <record id="sale_order_line_form_inherit" model="ir.ui.view">
+        <field name="name">sale.order.line.form.inherit.replacements</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='order_line']//list//field[@name='product_id']" position="after">
+                <field name="is_replacement" column_invisible="True"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>

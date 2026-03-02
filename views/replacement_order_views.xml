@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Sequence -->
+    <record id="seq_replacement_order" model="ir.sequence">
+        <field name="name">Orden de Reposición</field>
+        <field name="code">sale.replacement.order</field>
+        <field name="prefix">REP/%(year)s/</field>
+        <field name="padding">4</field>
+    </record>
+
+    <!-- Form View -->
+    <record id="view_replacement_order_form" model="ir.ui.view">
+        <field name="name">sale.replacement.order.form</field>
+        <field name="model">sale.replacement.order</field>
+        <field name="arch" type="xml">
+            <form string="Orden de Reposición">
+                <header>
+                    <button name="action_confirm"
+                            string="Confirmar"
+                            type="object"
+                            class="btn-primary"
+                            invisible="state != 'draft'"
+                            groups="stonia_replacements.group_replacement_manager"/>
+                    <button name="action_create_delivery"
+                            string="Crear Entrega"
+                            type="object"
+                            class="btn-primary"
+                            invisible="state != 'confirmed'"
+                            groups="stonia_replacements.group_replacement_manager"/>
+                    <button name="action_mark_accounting_done"
+                            string="Contabilidad Completada"
+                            type="object"
+                            class="btn-success"
+                            invisible="accounting_state != 'pending'"
+                            groups="stonia_replacements.group_replacement_admin"/>
+                    <button name="action_cancel"
+                            string="Cancelar"
+                            type="object"
+                            invisible="state in ('done', 'cancelled')"
+                            groups="stonia_replacements.group_replacement_admin"/>
+                    <button name="action_set_to_draft"
+                            string="Volver a Borrador"
+                            type="object"
+                            invisible="state != 'cancelled'"
+                            groups="stonia_replacements.group_replacement_admin"/>
+                    <field name="state" widget="statusbar"
+                           statusbar_visible="draft,confirmed,picking_pending,done"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name" readonly="1"/></h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="sale_order_id" readonly="state != 'draft'"/>
+                            <field name="partner_id" readonly="1"/>
+                            <field name="replacement_type" readonly="state != 'draft'"/>
+                            <field name="replacement_reason_id" readonly="state != 'draft'"/>
+                        </group>
+                        <group>
+                            <field name="return_picking_ids" widget="many2many_tags"
+                                   readonly="state != 'draft'"/>
+                            <field name="out_picking_id" readonly="1"/>
+                            <field name="credit_note_id" readonly="1"/>
+                            <field name="new_invoice_id" readonly="1"/>
+                        </group>
+                    </group>
+
+                    <!-- Resumen -->
+                    <group>
+                        <group string="Totales">
+                            <field name="total_m2_returned"/>
+                            <field name="total_m2_replaced"/>
+                            <field name="total_amount_difference"
+                                   decoration-danger="total_amount_difference &lt; 0"
+                                   decoration-success="total_amount_difference &gt; 0"/>
+                        </group>
+                        <group string="Decisión Contable">
+                            <field name="original_invoiced" readonly="1"/>
+                            <field name="accounting_state" widget="badge"
+                                   decoration-success="accounting_state == 'done'"
+                                   decoration-warning="accounting_state == 'pending'"/>
+                            <field name="charge_difference"
+                                   readonly="state not in ('draft', 'confirmed')"/>
+                            <field name="no_charge_reason"
+                                   invisible="charge_difference == True"
+                                   readonly="state not in ('draft', 'confirmed')"/>
+                        </group>
+                    </group>
+
+                    <notebook>
+                        <page string="Líneas de Reposición" name="lines">
+                            <field name="line_ids" readonly="state not in ('draft', 'confirmed')">
+                                <list editable="bottom">
+                                    <field name="original_product_id"/>
+                                    <field name="original_lot_ids" widget="many2many_tags"/>
+                                    <field name="m2_returned"/>
+                                    <field name="product_id"/>
+                                    <field name="replacement_lot_ids" widget="many2many_tags"/>
+                                    <field name="m2_replaced"/>
+                                    <field name="original_unit_price"/>
+                                    <field name="unit_price"/>
+                                    <field name="amount_difference"
+                                           decoration-danger="amount_difference &lt; 0"
+                                           decoration-success="amount_difference &gt; 0"/>
+                                    <field name="status" widget="badge"
+                                           decoration-info="status == 'pending_selection'"
+                                           decoration-warning="status == 'pending_delivery'"
+                                           decoration-success="status == 'delivered'"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Notas" name="notes">
+                            <field name="notes"/>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <!-- List View -->
+    <record id="view_replacement_order_list" model="ir.ui.view">
+        <field name="name">sale.replacement.order.list</field>
+        <field name="model">sale.replacement.order</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="name"/>
+                <field name="sale_order_id"/>
+                <field name="partner_id"/>
+                <field name="replacement_type"/>
+                <field name="replacement_reason_id"/>
+                <field name="total_m2_returned"/>
+                <field name="total_m2_replaced"/>
+                <field name="total_amount_difference"/>
+                <field name="state" widget="badge"
+                       decoration-success="state == 'done'"
+                       decoration-warning="state in ('picking_pending', 'accounting_pending')"
+                       decoration-info="state in ('draft', 'confirmed')"
+                       decoration-danger="state == 'cancelled'"/>
+                <field name="accounting_state" widget="badge"
+                       decoration-success="accounting_state == 'done'"
+                       decoration-warning="accounting_state == 'pending'"/>
+                <field name="create_date"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Search View -->
+    <record id="view_replacement_order_search" model="ir.ui.view">
+        <field name="name">sale.replacement.order.search</field>
+        <field name="model">sale.replacement.order</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <field name="sale_order_id"/>
+                <field name="partner_id"/>
+                <filter name="draft" string="Borrador" domain="[('state', '=', 'draft')]"/>
+                <filter name="confirmed" string="Confirmado" domain="[('state', '=', 'confirmed')]"/>
+                <filter name="pending" string="Pendiente entrega"
+                        domain="[('state', '=', 'picking_pending')]"/>
+                <filter name="accounting" string="Conta. pendiente"
+                        domain="[('accounting_state', '=', 'pending')]"/>
+                <filter name="done" string="Completado" domain="[('state', '=', 'done')]"/>
+                <separator/>
+                <filter name="same_product" string="Mismo producto"
+                        domain="[('replacement_type', '=', 'same_product')]"/>
+                <filter name="different" string="Cambio producto"
+                        domain="[('replacement_type', '=', 'different_product')]"/>
+                <filter name="refund" string="Devolución dinero"
+                        domain="[('replacement_type', '=', 'refund')]"/>
+                <group expand="0" string="Agrupar por">
+                    <filter name="group_state" string="Estado"
+                            context="{'group_by': 'state'}"/>
+                    <filter name="group_type" string="Tipo"
+                            context="{'group_by': 'replacement_type'}"/>
+                    <filter name="group_partner" string="Cliente"
+                            context="{'group_by': 'partner_id'}"/>
+                    <filter name="group_reason" string="Motivo"
+                            context="{'group_by': 'replacement_reason_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Action -->
+    <record id="action_replacement_order" model="ir.actions.act_window">
+        <field name="name">Órdenes de Reposición</field>
+        <field name="res_model">sale.replacement.order</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_replacement_order_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Aún no hay reposiciones
+            </p>
+            <p>
+                Las reposiciones se crean desde un pedido de venta con devoluciones registradas.
+            </p>
+        </field>
+    </record>
+</odoo>

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Pivot View -->
+    <record id="view_replacement_order_pivot" model="ir.ui.view">
+        <field name="name">sale.replacement.order.pivot</field>
+        <field name="model">sale.replacement.order</field>
+        <field name="arch" type="xml">
+            <pivot string="Análisis de Reposiciones">
+                <field name="replacement_reason_id" type="row"/>
+                <field name="replacement_type" type="col"/>
+                <field name="total_m2_returned" type="measure"/>
+                <field name="total_m2_replaced" type="measure"/>
+                <field name="total_amount_difference" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <!-- Graph View -->
+    <record id="view_replacement_order_graph" model="ir.ui.view">
+        <field name="name">sale.replacement.order.graph</field>
+        <field name="model">sale.replacement.order</field>
+        <field name="arch" type="xml">
+            <graph string="Reposiciones">
+                <field name="replacement_reason_id"/>
+                <field name="total_m2_replaced" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <!-- Update action to include pivot/graph -->
+    <record id="action_replacement_order" model="ir.actions.act_window">
+        <field name="name">Órdenes de Reposición</field>
+        <field name="res_model">sale.replacement.order</field>
+        <field name="view_mode">list,form,pivot,graph</field>
+        <field name="search_view_id" ref="view_replacement_order_search"/>
+    </record>
+</odoo>
