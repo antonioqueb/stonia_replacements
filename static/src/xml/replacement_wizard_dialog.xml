@@ -12,23 +12,23 @@
 
                 <!-- Step indicators -->
                 <div class="rw-steps">
-                    <div t-attf-class="rw-step {{ state.step &gt;= 1 ? 'active' : '' }} {{ state.step &gt; 1 ? 'done' : '' }}">
+                    <div t-attf-class="rw-step {{ state.step >= 1 ? 'active' : '' }} {{ state.step > 1 ? 'done' : '' }}">
                         <div class="rw-step-number">
-                            <t t-if="state.step &gt; 1"><i class="fa fa-check"/></t>
+                            <t t-if="state.step > 1"><i class="fa fa-check"/></t>
                             <t t-else="">1</t>
                         </div>
                         <div class="rw-step-label">Configuración</div>
                     </div>
-                    <div t-attf-class="rw-step-connector {{ state.step &gt; 1 ? 'active' : '' }}"/>
-                    <div t-attf-class="rw-step {{ state.step &gt;= 2 ? 'active' : '' }} {{ state.step &gt; 2 ? 'done' : '' }}">
+                    <div t-attf-class="rw-step-connector {{ state.step > 1 ? 'active' : '' }}"/>
+                    <div t-attf-class="rw-step {{ state.step >= 2 ? 'active' : '' }} {{ state.step > 2 ? 'done' : '' }}">
                         <div class="rw-step-number">
-                            <t t-if="state.step &gt; 2"><i class="fa fa-check"/></t>
+                            <t t-if="state.step > 2"><i class="fa fa-check"/></t>
                             <t t-else="">2</t>
                         </div>
-                        <div class="rw-step-label">Líneas</div>
+                        <div class="rw-step-label">Líneas y Lotes</div>
                     </div>
-                    <div t-attf-class="rw-step-connector {{ state.step &gt; 2 ? 'active' : '' }}"/>
-                    <div t-attf-class="rw-step {{ state.step &gt;= 3 ? 'active' : '' }}">
+                    <div t-attf-class="rw-step-connector {{ state.step > 2 ? 'active' : '' }}"/>
+                    <div t-attf-class="rw-step {{ state.step >= 3 ? 'active' : '' }}">
                         <div class="rw-step-number">3</div>
                         <div class="rw-step-label">Confirmar</div>
                     </div>
@@ -46,7 +46,7 @@
                                     <i class="fa fa-refresh"/>
                                     <div>
                                         <div class="rw-type-card-title">Mismo producto</div>
-                                        <div class="rw-type-card-desc">Reponer los mismos m² con otras placas</div>
+                                        <div class="rw-type-card-desc">Reponer con otros lotes del mismo producto</div>
                                     </div>
                                 </div>
                                 <div t-attf-class="rw-type-card {{ state.replacementType === 'different_product' ? 'selected' : '' }}"
@@ -54,7 +54,7 @@
                                     <i class="fa fa-exchange"/>
                                     <div>
                                         <div class="rw-type-card-title">Cambio de producto</div>
-                                        <div class="rw-type-card-desc">Cambiar por otro material diferente</div>
+                                        <div class="rw-type-card-desc">Cambiar por lotes de otro material</div>
                                     </div>
                                 </div>
                                 <div t-attf-class="rw-type-card {{ state.replacementType === 'refund' ? 'selected' : '' }}"
@@ -108,7 +108,7 @@
                                 <p>No hay devoluciones disponibles</p>
                             </div>
 
-                            <t t-if="state.availableReturns.length &gt; 0">
+                            <t t-if="state.availableReturns.length > 0">
                                 <div class="rw-select-all" t-on-click="selectAllReturns">
                                     <input type="checkbox" t-att-checked="allReturnsSelected" readonly="1"/>
                                     <span>Seleccionar todas</span>
@@ -148,14 +148,85 @@
 
                 <!-- ==================== STEP 2 ==================== -->
                 <div t-if="state.step === 2" class="rw-content">
+                    <!-- Lot Selector Panel (overlay) -->
+                    <t t-if="isLotSelectorOpen">
+                        <div class="rw-lot-overlay" t-on-click="closeLotSelector"/>
+                        <div class="rw-lot-panel">
+                            <div class="rw-lot-panel-header">
+                                <div>
+                                    <div class="rw-lot-panel-title">Seleccionar Lotes/Placas</div>
+                                    <div class="rw-lot-panel-subtitle">
+                                        <t t-esc="state.lines[state.activeLotLineIndex]?.replacementProductName || ''"/>
+                                    </div>
+                                </div>
+                                <button class="rw-lot-panel-close" t-on-click="closeLotSelector">
+                                    <i class="fa fa-times"/>
+                                </button>
+                            </div>
+
+                            <div class="rw-lot-search">
+                                <i class="fa fa-search"/>
+                                <input type="text" placeholder="Buscar lote/placa..."
+                                       t-att-value="state.lotSearchTerm"
+                                       t-on-input="onLotSearchInput"/>
+                            </div>
+
+                            <div t-if="state.lotSearchLoading" class="rw-lot-loading">
+                                <div class="rw-spinner-sm"/> Cargando lotes...
+                            </div>
+
+                            <div class="rw-lot-list">
+                                <t t-if="state.availableLots.length === 0 and !state.lotSearchLoading">
+                                    <div class="rw-lot-empty">
+                                        <i class="fa fa-cube"/>
+                                        <span>No hay lotes disponibles en inventario</span>
+                                    </div>
+                                </t>
+                                <t t-foreach="state.availableLots" t-as="lot" t-key="lot.id">
+                                    <div t-attf-class="rw-lot-item {{ lot.selected ? 'selected' : '' }}"
+                                         t-att-data-lot-id="lot.id"
+                                         t-on-click="toggleLotSelection">
+                                        <div class="rw-lot-item-check">
+                                            <i t-attf-class="fa {{ lot.selected ? 'fa-check-square text-primary' : 'fa-square-o' }}"/>
+                                        </div>
+                                        <div class="rw-lot-item-info">
+                                            <div class="rw-lot-item-name" t-esc="lot.name"/>
+                                        </div>
+                                        <div class="rw-lot-item-qty">
+                                            <span t-esc="lot.quantity.toFixed(2)"/> m²
+                                        </div>
+                                    </div>
+                                </t>
+                            </div>
+
+                            <!-- Selected lots summary -->
+                            <t t-if="state.activeLotLineIndex !== null">
+                                <t t-set="activeLine" t-value="state.lines[state.activeLotLineIndex]"/>
+                                <div class="rw-lot-summary" t-if="activeLine.replacementLots.length > 0">
+                                    <div class="rw-lot-summary-title">
+                                        <strong t-esc="activeLine.replacementLots.length"/> lotes seleccionados
+                                        — <strong t-esc="activeLine.totalLotM2.toFixed(2)"/> m²
+                                    </div>
+                                </div>
+                            </t>
+
+                            <div class="rw-lot-panel-footer">
+                                <button class="rw-btn rw-btn-primary" t-on-click="closeLotSelector">
+                                    <i class="fa fa-check me-1"/> Listo
+                                </button>
+                            </div>
+                        </div>
+                    </t>
+
                     <div class="rw-table-wrapper">
                         <table class="rw-table">
                             <thead>
                                 <tr>
                                     <th>Producto Original</th>
-                                    <th>Lote</th>
+                                    <th>Lote Devuelto</th>
                                     <th class="text-end">m² Devueltos</th>
                                     <th t-if="!isRefund">Producto Reposición</th>
+                                    <th t-if="!isRefund">Lotes Reposición</th>
                                     <th t-if="!isRefund" class="text-end">m² a Reponer</th>
                                     <th class="text-end">Precio Orig.</th>
                                     <th t-if="!isRefund" class="text-end">Precio Repos.</th>
@@ -165,30 +236,102 @@
                             <tbody>
                                 <t t-foreach="state.lines" t-as="line" t-key="line_index">
                                     <tr>
+                                        <!-- Original Product -->
                                         <td>
                                             <span class="rw-product-name" t-esc="line.productName"/>
                                         </td>
+                                        <!-- Original Lot -->
                                         <td>
                                             <span class="rw-lot-tag" t-if="line.lotName" t-esc="line.lotName"/>
                                             <span t-else="" class="text-muted">—</span>
                                         </td>
+                                        <!-- m² Returned -->
                                         <td class="text-end">
                                             <span class="rw-m2-val" t-esc="line.m2Returned.toFixed(2)"/>
                                         </td>
-                                        <td t-if="!isRefund">
-                                            <t t-if="state.replacementType === 'same_product'">
-                                                <span t-esc="line.productName"/>
+
+                                        <!-- Replacement Product -->
+                                        <td t-if="!isRefund" class="rw-product-cell">
+                                            <t t-if="isSameProduct">
+                                                <span class="rw-product-name" t-esc="line.productName"/>
                                             </t>
-                                            <t t-else="">
-                                                <input type="text" class="rw-input rw-input-sm"
-                                                       placeholder="ID producto..."
-                                                       t-att-value="line.replacementProductId || ''"
-                                                       t-att-data-line-index="line_index"
-                                                       t-on-change="onLineProductChangeFromEvent"/>
-                                                <div t-if="line.replacementProductName" class="rw-product-hint"
-                                                     t-esc="line.replacementProductName"/>
+                                            <t t-if="isDifferentProduct">
+                                                <!-- Product already selected -->
+                                                <t t-if="line.replacementProductId">
+                                                    <div class="rw-selected-product">
+                                                        <span class="rw-selected-product-name" t-esc="line.replacementProductName"/>
+                                                        <button class="rw-clear-btn"
+                                                                t-att-data-line-index="line_index"
+                                                                t-on-click="clearProductSelection"
+                                                                title="Cambiar producto">
+                                                            <i class="fa fa-times"/>
+                                                        </button>
+                                                    </div>
+                                                </t>
+                                                <!-- Product search input -->
+                                                <t t-if="!line.replacementProductId">
+                                                    <div class="rw-product-search-wrap">
+                                                        <input type="text" class="rw-input rw-input-sm"
+                                                               placeholder="Buscar producto..."
+                                                               t-att-data-line-index="line_index"
+                                                               t-on-input="onProductSearchInput"
+                                                               t-on-focus="onProductSearchFocus"
+                                                               t-on-blur="onProductSearchBlur"/>
+                                                        <!-- Search results dropdown -->
+                                                        <div t-if="state.activeProductSearchIndex === line_index and state.productSearchResults.length > 0"
+                                                             class="rw-product-dropdown">
+                                                            <t t-foreach="state.productSearchResults" t-as="prod" t-key="prod.id">
+                                                                <div class="rw-product-dropdown-item"
+                                                                     t-att-data-product-id="prod.id"
+                                                                     t-att-data-product-name="prod.name"
+                                                                     t-att-data-product-price="prod.list_price"
+                                                                     t-on-mousedown="onSelectProduct">
+                                                                    <div class="rw-product-dropdown-name" t-esc="prod.name"/>
+                                                                    <div class="rw-product-dropdown-detail">
+                                                                        <span t-if="prod.default_code" class="rw-product-code" t-esc="prod.default_code"/>
+                                                                        <span class="rw-product-price">
+                                                                            $<t t-esc="prod.list_price.toFixed(2)"/>
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            </t>
+                                                        </div>
+                                                        <div t-if="state.activeProductSearchIndex === line_index and state.productSearchLoading"
+                                                             class="rw-product-dropdown">
+                                                            <div class="rw-product-dropdown-loading">
+                                                                <div class="rw-spinner-sm"/> Buscando...
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </t>
                                             </t>
                                         </td>
+
+                                        <!-- Replacement Lots -->
+                                        <td t-if="!isRefund" class="rw-lots-cell">
+                                            <div class="rw-lots-container">
+                                                <!-- Show selected lots as tags -->
+                                                <t t-foreach="line.replacementLots" t-as="rlot" t-key="rlot.id">
+                                                    <span class="rw-lot-tag rw-lot-tag-removable">
+                                                        <t t-esc="rlot.name"/>
+                                                        <span class="rw-lot-tag-m2">(<t t-esc="rlot.quantity.toFixed(2)"/>m²)</span>
+                                                        <i class="fa fa-times rw-lot-tag-remove"
+                                                           t-att-data-line-index="line_index"
+                                                           t-att-data-lot-id="rlot.id"
+                                                           t-on-click="removeLotFromLine"/>
+                                                    </span>
+                                                </t>
+                                                <!-- Button to open lot selector -->
+                                                <button class="rw-add-lot-btn"
+                                                        t-att-data-line-index="line_index"
+                                                        t-on-click="openLotSelector"
+                                                        t-att-title="line.replacementProductId ? 'Seleccionar lotes' : 'Primero seleccione producto'">
+                                                    <i class="fa fa-plus"/> Lotes
+                                                </button>
+                                            </div>
+                                        </td>
+
+                                        <!-- m² to Replace -->
                                         <td t-if="!isRefund" class="text-end">
                                             <input type="number" class="rw-input rw-input-num"
                                                    step="0.01" min="0"
@@ -196,9 +339,11 @@
                                                    t-att-data-line-index="line_index"
                                                    t-on-change="onLineM2ChangeFromEvent"/>
                                         </td>
+                                        <!-- Original Price -->
                                         <td class="text-end">
                                             <span t-esc="formatCurrency(line.originalUnitPrice)"/>
                                         </td>
+                                        <!-- Replacement Price -->
                                         <td t-if="!isRefund" class="text-end">
                                             <input type="number" class="rw-input rw-input-num"
                                                    step="0.01" min="0"
@@ -206,8 +351,9 @@
                                                    t-att-data-line-index="line_index"
                                                    t-on-change="onLinePriceChangeFromEvent"/>
                                         </td>
+                                        <!-- Difference -->
                                         <td class="text-end">
-                                            <t t-set="lineDiff" t-value="line.m2ToReplace * line.replacementUnitPrice - line.m2Returned * line.originalUnitPrice"/>
+                                            <t t-set="lineDiff" t-value="(line.m2ToReplace * line.replacementUnitPrice) - (line.m2Returned * line.originalUnitPrice)"/>
                                             <span t-attf-class="rw-diff {{ lineDiff &lt; 0 ? 'negative' : 'positive' }}"
                                                   t-esc="formatCurrency(lineDiff)"/>
                                         </td>
@@ -218,6 +364,7 @@
                                 <tr class="rw-totals-row">
                                     <td colspan="2"><strong>Totales</strong></td>
                                     <td class="text-end"><strong t-esc="formatM2(state.totalM2Returned)"/></td>
+                                    <td t-if="!isRefund"/>
                                     <td t-if="!isRefund"/>
                                     <td t-if="!isRefund" class="text-end"><strong t-esc="formatM2(state.totalM2Replaced)"/></td>
                                     <td/>
@@ -293,13 +440,33 @@
                         <div class="rw-review-lines">
                             <t t-foreach="state.lines" t-as="line" t-key="line_index">
                                 <div class="rw-review-line">
-                                    <div class="rw-review-line-product" t-esc="line.productName"/>
+                                    <div class="rw-review-line-header">
+                                        <div class="rw-review-line-product" t-esc="line.productName"/>
+                                        <t t-if="line.lotName">
+                                            <span class="rw-lot-tag rw-lot-tag-sm" t-esc="line.lotName"/>
+                                        </t>
+                                    </div>
                                     <div class="rw-review-line-detail">
                                         <span t-esc="line.m2Returned.toFixed(2)"/> m² dev.
                                         <t t-if="!isRefund">
                                             → <span t-esc="line.m2ToReplace.toFixed(2)"/> m² rep.
+                                            <t t-if="line.replacementProductName and line.replacementProductName !== line.productName">
+                                                (<t t-esc="line.replacementProductName"/>)
+                                            </t>
                                         </t>
                                     </div>
+                                    <!-- Show replacement lots in review -->
+                                    <t t-if="!isRefund and line.replacementLots.length > 0">
+                                        <div class="rw-review-line-lots">
+                                            <span class="rw-review-lots-label">Lotes reposición:</span>
+                                            <t t-foreach="line.replacementLots" t-as="rlot" t-key="rlot.id">
+                                                <span class="rw-lot-tag rw-lot-tag-sm rw-lot-tag-new">
+                                                    <t t-esc="rlot.name"/>
+                                                    <span class="rw-lot-tag-m2">(<t t-esc="rlot.quantity.toFixed(2)"/>m²)</span>
+                                                </span>
+                                            </t>
+                                        </div>
+                                    </t>
                                 </div>
                             </t>
                         </div>

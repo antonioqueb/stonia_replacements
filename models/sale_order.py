@@ -182,6 +182,93 @@ class SaleOrder(models.Model):
         return lines
 
     @api.model
+    def search_products_for_replacement(self, search_term, limit=20):
+        """RPC: Search products for replacement selection.
+        Returns products that are storable and have stock lots.
+        """
+        domain = [
+            ('sale_ok', '=', True),
+            '|',
+            ('name', 'ilike', search_term),
+            ('default_code', 'ilike', search_term),
+        ]
+        products = self.env['product.product'].search(domain, limit=limit)
+        return [{
+            'id': p.id,
+            'name': p.display_name,
+            'default_code': p.default_code or '',
+            'list_price': p.list_price,
+        } for p in products]
+
+    @api.model
+    def get_available_lots_for_product(self, product_id, exclude_lot_ids=None):
+        """RPC: Get available lots/slabs for a product.
+        Returns lots with positive quant in stock locations.
+        """
+        if not product_id:
+            return []
+        exclude_lot_ids = exclude_lot_ids or []
+        # Get lots with available stock
+        quants = self.env['stock.quant'].search([
+            ('product_id', '=', product_id),
+            ('location_id.usage', '=', 'internal'),
+            ('quantity', '>', 0),
+            ('lot_id', '!=', False),
+        ])
+        lots_data = {}
+        for q in quants:
+            lot_id = q.lot_id.id
+            if lot_id in exclude_lot_ids:
+                continue
+            if lot_id not in lots_data:
+                lots_data[lot_id] = {
+                    'id': lot_id,
+                    'name': q.lot_id.name,
+                    'quantity': 0,
+                    'product_id': product_id,
+                }
+            lots_data[lot_id]['quantity'] += q.quantity
+        return list(lots_data.values())
+
+    @api.model
+    def search_lots_for_product(self, product_id, search_term='', exclude_lot_ids=None, limit=50):
+        """RPC: Search lots for a product with optional text filter."""
+        if not product_id:
+            return []
+        exclude_lot_ids = exclude_lot_ids or []
+        domain = [
+            ('product_id', '=', product_id),
+        ]
+        if search_term:
+            domain.append(('name', 'ilike', search_term))
+        if exclude_lot_ids:
+            domain.append(('id', 'not in', exclude_lot_ids))
+
+        # Only lots with stock
+        quants = self.env['stock.quant'].search([
+            ('product_id', '=', product_id),
+            ('location_id.usage', '=', 'internal'),
+            ('quantity', '>', 0),
+            ('lot_id', '!=', False),
+        ])
+        lot_ids_with_stock = quants.mapped('lot_id').ids
+
+        domain.append(('id', 'in', lot_ids_with_stock))
+
+        lots = self.env['stock.lot'].search(domain, limit=limit)
+        result = []
+        for lot in lots:
+            if lot.id in exclude_lot_ids:
+                continue
+            qty = sum(quants.filtered(lambda q: q.lot_id == lot).mapped('quantity'))
+            result.append({
+                'id': lot.id,
+                'name': lot.name,
+                'quantity': qty,
+            })
+        return result
+
+    @api.model
     def create_replacement_from_wizard(self, sale_order_id, payload):
         """RPC: Create replacement order from OWL wizard data."""
         order = self.browse(sale_order_id)
@@ -236,6 +323,10 @@ class SaleOrder(models.Model):
             lot_id = line.get('lot_id')
             if lot_id:
                 vals['original_lot_ids'] = [(6, 0, [lot_id])]
+            # Replacement lots
+            replacement_lot_ids = line.get('replacement_lot_ids', [])
+            if replacement_lot_ids:
+                vals['replacement_lot_ids'] = [(6, 0, replacement_lot_ids)]
             self.env['sale.replacement.order.line'].create(vals)
 
         # Confirm
