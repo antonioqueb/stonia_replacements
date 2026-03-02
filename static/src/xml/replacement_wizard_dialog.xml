@@ -1,0 +1,312 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <t t-name="stonia_replacements.ReplacementWizardDialog">
+        <Dialog title="'Reposición de Materiales'" size="'xl'" contentClass="'o_replacement_wizard'">
+            <div class="replacement-wizard">
+                <!-- Loading overlay -->
+                <div t-if="state.loading" class="rw-loading-overlay">
+                    <div class="rw-spinner"/>
+                    <span>Procesando...</span>
+                </div>
+
+                <!-- Step indicators -->
+                <div class="rw-steps">
+                    <div t-attf-class="rw-step {{ state.step >= 1 ? 'active' : '' }} {{ state.step > 1 ? 'done' : '' }}">
+                        <div class="rw-step-number">
+                            <t t-if="state.step > 1"><i class="fa fa-check"/></t>
+                            <t t-else="">1</t>
+                        </div>
+                        <div class="rw-step-label">Configuración</div>
+                    </div>
+                    <div class="rw-step-connector" t-attf-class="{{ state.step > 1 ? 'active' : '' }}"/>
+                    <div t-attf-class="rw-step {{ state.step >= 2 ? 'active' : '' }} {{ state.step > 2 ? 'done' : '' }}">
+                        <div class="rw-step-number">
+                            <t t-if="state.step > 2"><i class="fa fa-check"/></t>
+                            <t t-else="">2</t>
+                        </div>
+                        <div class="rw-step-label">Líneas</div>
+                    </div>
+                    <div class="rw-step-connector" t-attf-class="{{ state.step > 2 ? 'active' : '' }}"/>
+                    <div t-attf-class="rw-step {{ state.step >= 3 ? 'active' : '' }}">
+                        <div class="rw-step-number">3</div>
+                        <div class="rw-step-label">Confirmar</div>
+                    </div>
+                </div>
+
+                <!-- ==================== STEP 1: Configuration ==================== -->
+                <div t-if="state.step === 1" class="rw-content">
+                    <div class="rw-two-cols">
+                        <!-- Left column: Type + Reason -->
+                        <div class="rw-col">
+                            <div class="rw-section-title">Tipo de Reposición</div>
+                            <div class="rw-type-cards">
+                                <div t-attf-class="rw-type-card {{ state.replacementType === 'same_product' ? 'selected' : '' }}"
+                                     t-on-click="() => { state.replacementType = 'same_product'; }">
+                                    <i class="fa fa-refresh"/>
+                                    <div class="rw-type-card-title">Mismo producto</div>
+                                    <div class="rw-type-card-desc">Reponer los mismos m² con otras placas</div>
+                                </div>
+                                <div t-attf-class="rw-type-card {{ state.replacementType === 'different_product' ? 'selected' : '' }}"
+                                     t-on-click="() => { state.replacementType = 'different_product'; }">
+                                    <i class="fa fa-exchange"/>
+                                    <div class="rw-type-card-title">Cambio de producto</div>
+                                    <div class="rw-type-card-desc">Cambiar por otro material diferente</div>
+                                </div>
+                                <div t-attf-class="rw-type-card {{ state.replacementType === 'refund' ? 'selected' : '' }}"
+                                     t-on-click="() => { state.replacementType = 'refund'; }">
+                                    <i class="fa fa-money"/>
+                                    <div class="rw-type-card-title">Devolución de dinero</div>
+                                    <div class="rw-type-card-desc">Sin reposición, solo reembolso</div>
+                                </div>
+                            </div>
+
+                            <div class="rw-section-title mt-3">Motivo</div>
+                            <select class="rw-select" t-on-change="(ev) => { state.replacementReasonId = parseInt(ev.target.value) || false; }">
+                                <option value="">— Seleccionar motivo —</option>
+                                <t t-foreach="state.replacementReasons" t-as="reason" t-key="reason.id">
+                                    <option t-att-value="reason.id"
+                                            t-att-selected="state.replacementReasonId === reason.id">
+                                        <t t-esc="reason.name"/>
+                                    </option>
+                                </t>
+                            </select>
+
+                            <div class="rw-section-title mt-3">Cobro de diferencia</div>
+                            <div class="rw-toggle-row">
+                                <label class="rw-toggle">
+                                    <input type="checkbox"
+                                           t-att-checked="state.chargeCustomer"
+                                           t-on-change="(ev) => { state.chargeCustomer = ev.target.checked; }"/>
+                                    <span class="rw-toggle-slider"/>
+                                </label>
+                                <span>Cobrar diferencia al cliente</span>
+                            </div>
+                            <t t-if="!state.chargeCustomer">
+                                <input type="text" class="rw-input mt-2"
+                                       placeholder="Motivo de no cobro..."
+                                       t-att-value="state.noChargeReason"
+                                       t-on-input="(ev) => { state.noChargeReason = ev.target.value; }"/>
+                            </t>
+                        </div>
+
+                        <!-- Right column: Returns selection -->
+                        <div class="rw-col">
+                            <div class="rw-section-title">
+                                Devoluciones a reponer
+                                <span class="rw-badge" t-esc="state.selectedReturnIds.length + '/' + state.availableReturns.length"/>
+                            </div>
+
+                            <div t-if="state.availableReturns.length === 0" class="rw-empty">
+                                <i class="fa fa-inbox fa-3x"/>
+                                <p>No hay devoluciones disponibles</p>
+                            </div>
+
+                            <t t-if="state.availableReturns.length > 0">
+                                <div class="rw-select-all" t-on-click="selectAllReturns">
+                                    <input type="checkbox" t-att-checked="allReturnsSelected" readonly="1"/>
+                                    <span>Seleccionar todas</span>
+                                </div>
+                                <div class="rw-return-list">
+                                    <t t-foreach="state.availableReturns" t-as="ret" t-key="ret.id">
+                                        <div t-attf-class="rw-return-card {{ isReturnSelected(ret.id) ? 'selected' : '' }}"
+                                             t-on-click="() => this.toggleReturn(ret.id)">
+                                            <div class="rw-return-check">
+                                                <input type="checkbox" t-att-checked="isReturnSelected(ret.id)" readonly="1"/>
+                                            </div>
+                                            <div class="rw-return-info">
+                                                <div class="rw-return-name" t-esc="ret.name"/>
+                                                <div class="rw-return-detail">
+                                                    <span t-esc="ret.origin || ''"/>
+                                                    <span class="rw-return-date" t-esc="ret.date"/>
+                                                </div>
+                                            </div>
+                                            <div class="rw-return-m2">
+                                                <span t-esc="(ret.total_m2 || 0).toFixed(2)"/> m²
+                                            </div>
+                                        </div>
+                                    </t>
+                                </div>
+                            </t>
+                        </div>
+                    </div>
+
+                    <!-- Step 1 footer -->
+                    <div class="rw-footer">
+                        <button class="rw-btn rw-btn-secondary" t-on-click="props.close">Cancelar</button>
+                        <button t-attf-class="rw-btn rw-btn-primary {{ !canGoStep2 ? 'disabled' : '' }}"
+                                t-on-click="goToStep2">
+                            Siguiente <i class="fa fa-arrow-right ms-1"/>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ==================== STEP 2: Lines ==================== -->
+                <div t-if="state.step === 2" class="rw-content">
+                    <div class="rw-table-wrapper">
+                        <table class="rw-table">
+                            <thead>
+                                <tr>
+                                    <th>Producto Original</th>
+                                    <th>Lote</th>
+                                    <th class="text-end">m² Devueltos</th>
+                                    <th t-if="!isRefund">Producto Reposición</th>
+                                    <th t-if="!isRefund" class="text-end">m² a Reponer</th>
+                                    <th class="text-end">Precio Orig.</th>
+                                    <th t-if="!isRefund" class="text-end">Precio Repos.</th>
+                                    <th class="text-end">Diferencia</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <t t-foreach="state.lines" t-as="line" t-key="line_index">
+                                    <tr>
+                                        <td>
+                                            <span class="rw-product-name" t-esc="line.productName"/>
+                                        </td>
+                                        <td>
+                                            <span class="rw-lot-tag" t-if="line.lotName" t-esc="line.lotName"/>
+                                            <span t-else="" class="text-muted">—</span>
+                                        </td>
+                                        <td class="text-end">
+                                            <span class="rw-m2-val" t-esc="line.m2Returned.toFixed(2)"/>
+                                        </td>
+                                        <td t-if="!isRefund">
+                                            <t t-if="state.replacementType === 'same_product'">
+                                                <span t-esc="line.productName"/>
+                                            </t>
+                                            <t t-else="">
+                                                <input type="text" class="rw-input rw-input-sm"
+                                                       placeholder="ID producto..."
+                                                       t-att-value="line.replacementProductId || ''"
+                                                       t-on-change="(ev) => this.onLineProductChange(line_index, ev)"/>
+                                                <div t-if="line.replacementProductName" class="rw-product-hint"
+                                                     t-esc="line.replacementProductName"/>
+                                            </t>
+                                        </td>
+                                        <td t-if="!isRefund" class="text-end">
+                                            <input type="number" class="rw-input rw-input-num"
+                                                   step="0.01" min="0"
+                                                   t-att-value="line.m2ToReplace"
+                                                   t-on-change="(ev) => this.onLineM2Change(line_index, ev)"/>
+                                        </td>
+                                        <td class="text-end">
+                                            <span t-esc="formatCurrency(line.originalUnitPrice)"/>
+                                        </td>
+                                        <td t-if="!isRefund" class="text-end">
+                                            <input type="number" class="rw-input rw-input-num"
+                                                   step="0.01" min="0"
+                                                   t-att-value="line.replacementUnitPrice"
+                                                   t-on-change="(ev) => this.onLinePriceChange(line_index, ev)"/>
+                                        </td>
+                                        <td class="text-end">
+                                            <span t-attf-class="rw-diff {{ (line.m2ToReplace * line.replacementUnitPrice - line.m2Returned * line.originalUnitPrice) &lt; 0 ? 'negative' : 'positive' }}"
+                                                  t-esc="formatCurrency(line.m2ToReplace * line.replacementUnitPrice - line.m2Returned * line.originalUnitPrice)"/>
+                                        </td>
+                                    </tr>
+                                </t>
+                            </tbody>
+                            <tfoot>
+                                <tr class="rw-totals-row">
+                                    <td colspan="2"><strong>Totales</strong></td>
+                                    <td class="text-end"><strong t-esc="formatM2(state.totalM2Returned)"/></td>
+                                    <td t-if="!isRefund"/>
+                                    <td t-if="!isRefund" class="text-end"><strong t-esc="formatM2(state.totalM2Replaced)"/></td>
+                                    <td/>
+                                    <td t-if="!isRefund"/>
+                                    <td class="text-end">
+                                        <strong t-attf-class="rw-diff {{ state.totalDifference &lt; 0 ? 'negative' : 'positive' }}"
+                                                t-esc="formatCurrency(state.totalDifference)"/>
+                                    </td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+
+                    <div class="rw-footer">
+                        <button class="rw-btn rw-btn-secondary" t-on-click="() => this.goBack(1)">
+                            <i class="fa fa-arrow-left me-1"/> Atrás
+                        </button>
+                        <button t-attf-class="rw-btn rw-btn-primary {{ !canGoStep3 ? 'disabled' : '' }}"
+                                t-on-click="goToStep3">
+                            Revisar <i class="fa fa-arrow-right ms-1"/>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ==================== STEP 3: Review + Confirm ==================== -->
+                <div t-if="state.step === 3" class="rw-content">
+                    <div class="rw-review">
+                        <div class="rw-review-header">
+                            <div class="rw-review-title">Resumen de Reposición</div>
+                            <div class="rw-review-so" t-esc="props.saleOrderName"/>
+                        </div>
+
+                        <div class="rw-review-grid">
+                            <div class="rw-review-card">
+                                <div class="rw-review-card-label">Tipo</div>
+                                <div class="rw-review-card-value" t-esc="replacementTypeLabel"/>
+                            </div>
+                            <div class="rw-review-card">
+                                <div class="rw-review-card-label">Motivo</div>
+                                <div class="rw-review-card-value" t-esc="reasonLabel"/>
+                            </div>
+                            <div class="rw-review-card">
+                                <div class="rw-review-card-label">Devoluciones</div>
+                                <div class="rw-review-card-value" t-esc="state.selectedReturnIds.length"/>
+                            </div>
+                            <div class="rw-review-card">
+                                <div class="rw-review-card-label">Cobrar diferencia</div>
+                                <div class="rw-review-card-value" t-esc="state.chargeCustomer ? 'Sí' : 'No'"/>
+                            </div>
+                        </div>
+
+                        <div class="rw-review-totals">
+                            <div class="rw-review-total-item">
+                                <span>m² Devueltos</span>
+                                <strong t-esc="formatM2(state.totalM2Returned)"/>
+                            </div>
+                            <t t-if="!isRefund">
+                                <div class="rw-review-total-item">
+                                    <span>m² a Reponer</span>
+                                    <strong t-esc="formatM2(state.totalM2Replaced)"/>
+                                </div>
+                            </t>
+                            <div class="rw-review-total-item highlight">
+                                <span>Diferencia total</span>
+                                <strong t-attf-class="rw-diff {{ state.totalDifference &lt; 0 ? 'negative' : 'positive' }}"
+                                        t-esc="formatCurrency(state.totalDifference)"/>
+                            </div>
+                        </div>
+
+                        <div class="rw-review-lines-title">
+                            <t t-esc="state.lines.length"/> líneas de reposición
+                        </div>
+                        <div class="rw-review-lines">
+                            <t t-foreach="state.lines" t-as="line" t-key="line_index">
+                                <div class="rw-review-line">
+                                    <div class="rw-review-line-product" t-esc="line.productName"/>
+                                    <div class="rw-review-line-detail">
+                                        <span t-esc="line.m2Returned.toFixed(2)"/> m² dev.
+                                        <t t-if="!isRefund">
+                                            → <span t-esc="line.m2ToReplace.toFixed(2)"/> m² rep.
+                                        </t>
+                                    </div>
+                                </div>
+                            </t>
+                        </div>
+                    </div>
+
+                    <div class="rw-footer">
+                        <button class="rw-btn rw-btn-secondary" t-on-click="() => this.goBack(2)">
+                            <i class="fa fa-arrow-left me-1"/> Atrás
+                        </button>
+                        <button class="rw-btn rw-btn-confirm" t-on-click="onConfirm">
+                            <i class="fa fa-check me-1"/> Confirmar Reposición
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </Dialog>
+    </t>
+
+</templates>

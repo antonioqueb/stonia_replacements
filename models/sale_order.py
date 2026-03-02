@@ -1,4 +1,5 @@
 from odoo import models, fields, api, _
+from odoo.exceptions import UserError
 
 
 class SaleOrder(models.Model):
@@ -22,7 +23,6 @@ class SaleOrder(models.Model):
         compute='_compute_return_pickings',
         string='Devoluciones',
     )
-    # Resumen comercial
     total_m2_sold = fields.Float(
         string='m² vendidos',
         compute='_compute_m2_summary',
@@ -46,17 +46,9 @@ class SaleOrder(models.Model):
             order.replacement_count = len(order.replacement_order_ids)
 
     def _get_return_pickings(self):
-        """Obtener devoluciones: pickings de entrada ligados a este pedido.
-        Detecta tanto las creadas por nuestro wizard (is_return_from_delivery)
-        como las creadas por el return wizard estándar de Odoo (incoming + origin referenciando un OUT).
-        """
+        """Get returns: both custom-flagged and standard Odoo incoming pickings."""
         self.ensure_one()
-        # 1) Nuestras devoluciones marcadas explícitamente
         marked_returns = self.picking_ids.filtered(lambda p: p.is_return_from_delivery)
-
-        # 2) Devoluciones estándar de Odoo: pickings incoming ligados al SO
-        #    que tienen origin con "Return of" o "Devolución de" o cuyo
-        #    picking_type_code es incoming
         standard_returns = self.picking_ids.filtered(
             lambda p: (
                 p.picking_type_code == 'incoming'
@@ -64,7 +56,6 @@ class SaleOrder(models.Model):
                 and p.state != 'cancel'
             )
         )
-
         return marked_returns | standard_returns
 
     @api.depends('picking_ids', 'picking_ids.state', 'picking_ids.picking_type_code',
@@ -87,7 +78,6 @@ class SaleOrder(models.Model):
             )
 
     def action_open_replacements(self):
-        """Abrir lista de reposiciones del pedido."""
         self.ensure_one()
         action = {
             'type': 'ir.actions.act_window',
@@ -106,7 +96,6 @@ class SaleOrder(models.Model):
         return action
 
     def action_open_returns(self):
-        """Abrir devoluciones del pedido."""
         self.ensure_one()
         returns = self._get_return_pickings()
         return {
@@ -118,20 +107,17 @@ class SaleOrder(models.Model):
         }
 
     def action_create_replacement(self):
-        """Abrir wizard para crear reposición de materiales."""
+        """Button action — intercepted by JS to open OWL dialog.
+        Kept as fallback in case JS fails."""
         self.ensure_one()
-        # Buscar devoluciones validadas (nuestras + estándar de Odoo)
-        returns = self._get_return_pickings().filtered(
-            lambda p: p.state == 'done'
-        )
+        returns = self._get_return_pickings().filtered(lambda p: p.state == 'done')
         if not returns:
             return {
                 'type': 'ir.actions.client',
                 'tag': 'display_notification',
                 'params': {
                     'title': _('Sin devoluciones'),
-                    'message': _('No hay devoluciones validadas para este pedido. '
-                                 'Primero debe registrar una devolución.'),
+                    'message': _('No hay devoluciones validadas para este pedido.'),
                     'type': 'warning',
                     'sticky': False,
                 },
@@ -142,7 +128,120 @@ class SaleOrder(models.Model):
             'res_model': 'sale.replacement.wizard',
             'view_mode': 'form',
             'target': 'new',
-            'context': {
-                'default_sale_order_id': self.id,
-            },
+            'context': {'default_sale_order_id': self.id},
+        }
+
+    # ===================== RPC METHODS FOR OWL WIZARD =====================
+
+    @api.model
+    def get_available_returns(self, sale_order_id):
+        """RPC: Get available validated return pickings for a sale order."""
+        order = self.browse(sale_order_id)
+        if not order.exists():
+            return []
+        returns = order._get_return_pickings().filtered(lambda p: p.state == 'done')
+        result = []
+        for ret in returns:
+            total_m2 = sum(ret.move_ids.filtered(
+                lambda m: m.state == 'done'
+            ).mapped('quantity'))
+            result.append({
+                'id': ret.id,
+                'name': ret.name,
+                'origin': ret.origin or '',
+                'date': ret.scheduled_date.strftime('%d/%m/%Y') if ret.scheduled_date else '',
+                'state': ret.state,
+                'total_m2': total_m2,
+                'return_reason': ret.return_reason_id.name if ret.return_reason_id else '',
+                'is_logistics': ret.is_logistics_return,
+            })
+        return result
+
+    @api.model
+    def get_return_lines_for_replacement(self, sale_order_id, return_picking_ids):
+        """RPC: Get detailed move lines from selected return pickings."""
+        pickings = self.env['stock.picking'].browse(return_picking_ids)
+        lines = []
+        for picking in pickings:
+            for move in picking.move_ids.filtered(lambda m: m.state == 'done'):
+                sale_line = move.sale_line_id
+                original_price = sale_line.price_unit if sale_line else 0.0
+                for move_line in move.move_line_ids:
+                    lines.append({
+                        'productId': move.product_id.id,
+                        'productName': move.product_id.display_name,
+                        'lotId': move_line.lot_id.id if move_line.lot_id else False,
+                        'lotName': move_line.lot_id.name if move_line.lot_id else '',
+                        'm2Returned': move_line.quantity,
+                        'originalUnitPrice': original_price,
+                        'moveId': move.id,
+                        'saleLineId': sale_line.id if sale_line else False,
+                        'pickingId': picking.id,
+                        'pickingName': picking.name,
+                    })
+        return lines
+
+    @api.model
+    def create_replacement_from_wizard(self, sale_order_id, payload):
+        """RPC: Create replacement order from OWL wizard data."""
+        order = self.browse(sale_order_id)
+        if not order.exists():
+            raise UserError(_('Pedido de venta no encontrado.'))
+
+        replacement_type = payload.get('replacement_type')
+        lines_data = payload.get('lines', [])
+
+        # Validate no zero prices (unless admin)
+        if replacement_type != 'refund':
+            zero_lines = [l for l in lines_data
+                          if l.get('replacement_unit_price', 0) <= 0
+                          and l.get('m2_to_replace', 0) > 0]
+            if zero_lines and not self.env.user.has_group(
+                'stonia_replacements.group_replacement_admin'
+            ):
+                raise UserError(_(
+                    'No se permite crear reposiciones con precio $0.00. '
+                    'Las diferencias deben manejarse con notas de crédito.'
+                ))
+
+        # Mark return pickings
+        return_picking_ids = payload.get('return_picking_ids', [])
+        for picking in self.env['stock.picking'].browse(return_picking_ids):
+            if not picking.is_return_from_delivery:
+                picking.is_return_from_delivery = True
+
+        # Create replacement order
+        replacement = self.env['sale.replacement.order'].create({
+            'sale_order_id': sale_order_id,
+            'return_picking_ids': [(6, 0, return_picking_ids)],
+            'replacement_type': replacement_type,
+            'replacement_reason_id': payload.get('replacement_reason_id'),
+            'charge_difference': payload.get('charge_difference', False),
+            'no_charge_reason': payload.get('no_charge_reason', ''),
+        })
+
+        # Create lines
+        for line in lines_data:
+            vals = {
+                'replacement_order_id': replacement.id,
+                'original_product_id': line.get('product_id'),
+                'm2_returned': line.get('m2_returned', 0),
+                'product_id': line.get('replacement_product_id') or line.get('product_id'),
+                'm2_replaced': line.get('m2_to_replace', 0),
+                'original_unit_price': line.get('original_unit_price', 0),
+                'unit_price': line.get('replacement_unit_price', 0),
+                'sale_line_id': line.get('sale_line_id'),
+                'return_move_id': line.get('move_id'),
+            }
+            lot_id = line.get('lot_id')
+            if lot_id:
+                vals['original_lot_ids'] = [(6, 0, [lot_id])]
+            self.env['sale.replacement.order.line'].create(vals)
+
+        # Confirm
+        replacement.action_confirm()
+
+        return {
+            'replacement_id': replacement.id,
+            'name': replacement.name,
         }

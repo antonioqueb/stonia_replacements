@@ -1,6 +1,6 @@
 {
     'name': 'Reposición de Materiales',
-    'version': '19.0.1.0.0',
+    'version': '19.0.1.1.0',
     'category': 'Sales',
     'summary': 'Gestión de devoluciones y reposiciones de materiales con trazabilidad completa',
     'description': """
@@ -36,6 +36,14 @@
         'wizards/scrap_from_return_wizard_views.xml',
         'report/replacement_report_views.xml',
     ],
+    'assets': {
+        'web.assets_backend': [
+            'stonia_replacements/static/src/css/replacement_wizard.css',
+            'stonia_replacements/static/src/js/replacement_wizard_dialog.js',
+            'stonia_replacements/static/src/js/sale_order_replacement_hook.js',
+            'stonia_replacements/static/src/xml/replacement_wizard_dialog.xml',
+        ],
+    },
     'installable': True,
     'application': False,
     'auto_install': False,
