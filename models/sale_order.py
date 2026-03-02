@@ -45,24 +45,43 @@ class SaleOrder(models.Model):
         for order in self:
             order.replacement_count = len(order.replacement_order_ids)
 
-    @api.depends('picking_ids')
+    def _get_return_pickings(self):
+        """Obtener devoluciones: pickings de entrada ligados a este pedido.
+        Detecta tanto las creadas por nuestro wizard (is_return_from_delivery)
+        como las creadas por el return wizard estándar de Odoo (incoming + origin referenciando un OUT).
+        """
+        self.ensure_one()
+        # 1) Nuestras devoluciones marcadas explícitamente
+        marked_returns = self.picking_ids.filtered(lambda p: p.is_return_from_delivery)
+
+        # 2) Devoluciones estándar de Odoo: pickings incoming ligados al SO
+        #    que tienen origin con "Return of" o "Devolución de" o cuyo
+        #    picking_type_code es incoming
+        standard_returns = self.picking_ids.filtered(
+            lambda p: (
+                p.picking_type_code == 'incoming'
+                and not p.is_replacement_delivery
+                and p.state != 'cancel'
+            )
+        )
+
+        return marked_returns | standard_returns
+
+    @api.depends('picking_ids', 'picking_ids.state', 'picking_ids.picking_type_code',
+                 'picking_ids.is_return_from_delivery')
     def _compute_return_pickings(self):
         for order in self:
-            returns = order.picking_ids.filtered(lambda p: p.is_return_from_delivery)
+            returns = order._get_return_pickings()
             order.return_picking_ids = returns
             order.return_count = len(returns)
 
     def _compute_m2_summary(self):
         for order in self:
-            # m² vendidos = suma de qty en líneas de venta
             order.total_m2_sold = sum(order.order_line.mapped('product_uom_qty'))
-            # m² entregados = qty_delivered
             order.total_m2_delivered = sum(order.order_line.mapped('qty_delivered'))
-            # m² devueltos
             order.total_m2_returned = sum(
                 order.replacement_order_ids.mapped('total_m2_returned')
             )
-            # m² repuestos
             order.total_m2_replaced = sum(
                 order.replacement_order_ids.mapped('total_m2_replaced')
             )
@@ -89,20 +108,21 @@ class SaleOrder(models.Model):
     def action_open_returns(self):
         """Abrir devoluciones del pedido."""
         self.ensure_one()
+        returns = self._get_return_pickings()
         return {
             'type': 'ir.actions.act_window',
             'name': _('Devoluciones - %s') % self.name,
             'res_model': 'stock.picking',
             'view_mode': 'list,form',
-            'domain': [('id', 'in', self.return_picking_ids.ids)],
+            'domain': [('id', 'in', returns.ids)],
         }
 
     def action_create_replacement(self):
         """Abrir wizard para crear reposición de materiales."""
         self.ensure_one()
-        # Verificar que hay devoluciones
-        returns = self.picking_ids.filtered(
-            lambda p: p.is_return_from_delivery and p.state == 'done'
+        # Buscar devoluciones validadas (nuestras + estándar de Odoo)
+        returns = self._get_return_pickings().filtered(
+            lambda p: p.state == 'done'
         )
         if not returns:
             return {

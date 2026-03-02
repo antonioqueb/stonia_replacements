@@ -14,10 +14,11 @@ class SaleReplacementWizard(models.TransientModel):
     return_picking_ids = fields.Many2many(
         'stock.picking',
         string='Devoluciones a reponer',
-        domain="[('sale_id', '=', sale_order_id), "
-               "('is_return_from_delivery', '=', True), "
-               "('state', '=', 'done'), "
-               "('is_logistics_return', '=', False)]",
+    )
+    available_return_picking_ids = fields.Many2many(
+        'stock.picking',
+        compute='_compute_available_return_pickings',
+        string='Devoluciones disponibles',
     )
     replacement_type = fields.Selection([
         ('same_product', 'Reposición mismo producto'),
@@ -41,6 +42,17 @@ class SaleReplacementWizard(models.TransientModel):
         string='Líneas',
     )
     notes = fields.Html(string='Notas')
+
+    @api.depends('sale_order_id')
+    def _compute_available_return_pickings(self):
+        for wiz in self:
+            if wiz.sale_order_id:
+                # Obtener devoluciones validadas del pedido (custom + estándar)
+                wiz.available_return_picking_ids = wiz.sale_order_id._get_return_pickings().filtered(
+                    lambda p: p.state == 'done'
+                )
+            else:
+                wiz.available_return_picking_ids = self.env['stock.picking']
 
     @api.onchange('return_picking_ids', 'replacement_type')
     def _onchange_return_pickings(self):
@@ -86,6 +98,11 @@ class SaleReplacementWizard(models.TransientModel):
                     'No se permite crear reposiciones con precio $0.00. '
                     'Las diferencias deben manejarse con notas de crédito.'
                 ))
+
+        # Marcar los pickings de devolución si no están marcados
+        for picking in self.return_picking_ids:
+            if not picking.is_return_from_delivery:
+                picking.is_return_from_delivery = True
 
         # Crear orden de reposición
         replacement = self.env['sale.replacement.order'].create({

@@ -38,11 +38,11 @@
                 <separator string="Resumen de Entregas y Reposiciones"
                            invisible="replacement_count == 0"/>
                 <group invisible="replacement_count == 0">
-                    <group>
+                    <group string="Entregas">
                         <field name="total_m2_sold" readonly="1"/>
                         <field name="total_m2_delivered" readonly="1"/>
                     </group>
-                    <group>
+                    <group string="Devoluciones / Reposiciones">
                         <field name="total_m2_returned" readonly="1"/>
                         <field name="total_m2_replaced" readonly="1"/>
                     </group>
@@ -57,9 +57,9 @@
                         <field name="name"/>
                         <field name="replacement_type"/>
                         <field name="replacement_reason_id"/>
-                        <field name="total_m2_returned"/>
-                        <field name="total_m2_replaced"/>
-                        <field name="total_amount_difference"/>
+                        <field name="total_m2_returned" string="m² Devueltos"/>
+                        <field name="total_m2_replaced" string="m² Repuestos"/>
+                        <field name="total_amount_difference" string="Diferencia"/>
                         <field name="state" widget="badge"
                                decoration-success="state == 'done'"
                                decoration-warning="state in ('picking_pending', 'accounting_pending')"

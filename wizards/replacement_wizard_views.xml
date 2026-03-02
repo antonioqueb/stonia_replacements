@@ -12,8 +12,10 @@
                         <field name="replacement_reason_id"/>
                     </group>
                     <group>
+                        <field name="available_return_picking_ids" invisible="1"/>
                         <field name="return_picking_ids" widget="many2many_tags"
                                required="1"
+                               domain="[('id', 'in', available_return_picking_ids)]"
                                options="{'no_create': True}"/>
                         <field name="charge_difference"/>
                         <field name="no_charge_reason"
