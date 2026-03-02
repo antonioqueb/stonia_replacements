@@ -170,7 +170,6 @@
                         domain="[('replacement_type', '=', 'different_product')]"/>
                 <filter name="refund" string="Devolución dinero"
                         domain="[('replacement_type', '=', 'refund')]"/>
-                <group expand="0" string="Agrupar por">
                     <filter name="group_state" string="Estado"
                             context="{'group_by': 'state'}"/>
                     <filter name="group_type" string="Tipo"
@@ -179,7 +178,6 @@
                             context="{'group_by': 'partner_id'}"/>
                     <filter name="group_reason" string="Motivo"
                             context="{'group_by': 'replacement_reason_id'}"/>
-                </group>
             </search>
         </field>
     </record>
