@@ -1,42 +1,45 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Botones en SO -->
+
+    <!-- ============================================================
+         Sale Order Form: Stonia Replacements
+         Botones de reposición en el button_box nativo (no crear uno nuevo)
+         ============================================================ -->
     <record id="sale_order_form_inherit_replacements" model="ir.ui.view">
         <field name="name">sale.order.form.inherit.replacements</field>
         <field name="model">sale.order</field>
         <field name="inherit_id" ref="sale.view_order_form"/>
         <field name="arch" type="xml">
-            <!-- Botón de Reposición arriba -->
-            <xpath expr="//field[@name='partner_id']/.." position="before">
-                <div class="oe_button_box" name="replacement_button_box">
-                    <button name="action_create_replacement"
-                            type="object"
-                            class="oe_stat_button btn-primary"
-                            icon="fa-refresh"
-                            string="Reposición de Materiales"
-                            invisible="state != 'sale'"
-                            groups="stonia_replacements.group_replacement_user"/>
-                    <button name="action_open_replacements"
-                            type="object"
-                            class="oe_stat_button"
-                            icon="fa-exchange"
-                            invisible="replacement_count == 0">
-                        <field name="replacement_count" widget="statinfo" string="Reposiciones"/>
-                    </button>
-                    <button name="action_open_returns"
-                            type="object"
-                            class="oe_stat_button"
-                            icon="fa-undo"
-                            invisible="return_count == 0">
-                        <field name="return_count" widget="statinfo" string="Devoluciones"/>
-                    </button>
-                </div>
+
+            <!-- Stat buttons dentro del button_box NATIVO de Odoo -->
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button name="action_create_replacement"
+                    type="object"
+                    class="oe_stat_button"
+                    icon="fa-refresh"
+                    string="Reposición"
+                    invisible="state != 'sale'"
+                    groups="stonia_replacements.group_replacement_user"/>
+                <button name="action_open_replacements"
+                    type="object"
+                    class="oe_stat_button"
+                    icon="fa-exchange"
+                    invisible="replacement_count == 0">
+                    <field name="replacement_count" widget="statinfo" string="Reposiciones"/>
+                </button>
+                <button name="action_open_returns"
+                    type="object"
+                    class="oe_stat_button"
+                    icon="fa-undo"
+                    invisible="return_count == 0">
+                    <field name="return_count" widget="statinfo" string="Devoluciones"/>
+                </button>
             </xpath>
 
-            <!-- Sección de Resumen m² -->
+            <!-- Sección de Resumen m² antes de notas -->
             <xpath expr="//field[@name='note']" position="before">
                 <separator string="Resumen de Entregas y Reposiciones"
-                           invisible="replacement_count == 0"/>
+                    invisible="replacement_count == 0"/>
                 <group invisible="replacement_count == 0">
                     <group string="Entregas">
                         <field name="total_m2_sold" readonly="1"/>
@@ -50,9 +53,9 @@
 
                 <!-- Tabla de Reposiciones -->
                 <field name="replacement_order_ids"
-                       invisible="replacement_count == 0"
-                       readonly="1"
-                       nolabel="1">
+                    invisible="replacement_count == 0"
+                    readonly="1"
+                    nolabel="1">
                     <list>
                         <field name="name"/>
                         <field name="replacement_type"/>
@@ -61,16 +64,17 @@
                         <field name="total_m2_replaced" string="m² Repuestos"/>
                         <field name="total_amount_difference" string="Diferencia"/>
                         <field name="state" widget="badge"
-                               decoration-success="state == 'done'"
-                               decoration-warning="state in ('picking_pending', 'accounting_pending')"
-                               decoration-info="state in ('draft', 'confirmed')"
-                               decoration-danger="state == 'cancelled'"/>
+                            decoration-success="state == 'done'"
+                            decoration-warning="state in ('picking_pending', 'accounting_pending')"
+                            decoration-info="state in ('draft', 'confirmed')"
+                            decoration-danger="state == 'cancelled'"/>
                         <field name="accounting_state" widget="badge"
-                               decoration-success="accounting_state == 'done'"
-                               decoration-warning="accounting_state == 'pending'"/>
+                            decoration-success="accounting_state == 'done'"
+                            decoration-warning="accounting_state == 'pending'"/>
                     </list>
                 </field>
             </xpath>
+
         </field>
     </record>
 
@@ -85,4 +89,5 @@
             </xpath>
         </field>
     </record>
+
 </odoo>
