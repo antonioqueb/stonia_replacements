@@ -163,87 +163,6 @@ from . import stock_picking
 from . import stock_move
 ```
 
-## ./models/replacement_order_line.py
-```py
-from odoo import models, fields, api
-
-
-class ReplacementOrderLine(models.Model):
-    _name = 'sale.replacement.order.line'
-    _description = 'Línea de Orden de Reposición'
-
-    replacement_order_id = fields.Many2one(
-        'sale.replacement.order',
-        string='Orden de reposición',
-        required=True,
-        ondelete='cascade',
-    )
-    sale_order_id = fields.Many2one(
-        related='replacement_order_id.sale_order_id',
-        store=True,
-    )
-    # Producto original (devuelto)
-    original_product_id = fields.Many2one(
-        'product.product',
-        string='Producto original (devuelto)',
-    )
-    original_lot_ids = fields.Many2many(
-        'stock.lot',
-        'replacement_line_original_lot_rel',
-        'line_id',
-        'lot_id',
-        string='Lotes devueltos',
-    )
-    m2_returned = fields.Float(string='m² devueltos')
-
-    # Producto de reposición
-    product_id = fields.Many2one(
-        'product.product',
-        string='Producto de reposición',
-        required=True,
-    )
-    replacement_lot_ids = fields.Many2many(
-        'stock.lot',
-        'replacement_line_new_lot_rel',
-        'line_id',
-        'lot_id',
-        string='Lotes de reposición',
-        help='Placas/lotes seleccionados para la reposición',
-    )
-    m2_replaced = fields.Float(string='m² a reponer')
-
-    # Precios y diferencias
-    original_unit_price = fields.Float(string='Precio original (por m²)')
-    unit_price = fields.Float(string='Precio reposición (por m²)')
-    amount_difference = fields.Float(
-        string='Diferencia',
-        compute='_compute_amount_difference',
-        store=True,
-    )
-    sale_line_id = fields.Many2one(
-        'sale.order.line',
-        string='Línea de pedido original',
-    )
-    return_move_id = fields.Many2one(
-        'stock.move',
-        string='Movimiento de devolución',
-    )
-    status = fields.Selection([
-        ('pending_selection', 'Pendiente de seleccionar placas'),
-        ('pending_delivery', 'Pendiente de entrega'),
-        ('delivered', 'Entregado'),
-    ], string='Estatus', default='pending_selection')
-
-    notes = fields.Text(string='Notas')
-
-    @api.depends('m2_returned', 'original_unit_price', 'm2_replaced', 'unit_price')
-    def _compute_amount_difference(self):
-        for line in self:
-            original_amount = line.m2_returned * line.original_unit_price
-            replacement_amount = line.m2_replaced * line.unit_price
-            line.amount_difference = replacement_amount - original_amount
-```
-
 ## ./models/replacement_order.py
 ```py
 from odoo import models, fields, api, _
@@ -496,6 +415,87 @@ class ReplacementOrder(models.Model):
             if rec.state == 'cancelled':
                 rec.state = 'draft'```
 
+## ./models/replacement_order_line.py
+```py
+from odoo import models, fields, api
+
+
+class ReplacementOrderLine(models.Model):
+    _name = 'sale.replacement.order.line'
+    _description = 'Línea de Orden de Reposición'
+
+    replacement_order_id = fields.Many2one(
+        'sale.replacement.order',
+        string='Orden de reposición',
+        required=True,
+        ondelete='cascade',
+    )
+    sale_order_id = fields.Many2one(
+        related='replacement_order_id.sale_order_id',
+        store=True,
+    )
+    # Producto original (devuelto)
+    original_product_id = fields.Many2one(
+        'product.product',
+        string='Producto original (devuelto)',
+    )
+    original_lot_ids = fields.Many2many(
+        'stock.lot',
+        'replacement_line_original_lot_rel',
+        'line_id',
+        'lot_id',
+        string='Lotes devueltos',
+    )
+    m2_returned = fields.Float(string='m² devueltos')
+
+    # Producto de reposición
+    product_id = fields.Many2one(
+        'product.product',
+        string='Producto de reposición',
+        required=True,
+    )
+    replacement_lot_ids = fields.Many2many(
+        'stock.lot',
+        'replacement_line_new_lot_rel',
+        'line_id',
+        'lot_id',
+        string='Lotes de reposición',
+        help='Placas/lotes seleccionados para la reposición',
+    )
+    m2_replaced = fields.Float(string='m² a reponer')
+
+    # Precios y diferencias
+    original_unit_price = fields.Float(string='Precio original (por m²)')
+    unit_price = fields.Float(string='Precio reposición (por m²)')
+    amount_difference = fields.Float(
+        string='Diferencia',
+        compute='_compute_amount_difference',
+        store=True,
+    )
+    sale_line_id = fields.Many2one(
+        'sale.order.line',
+        string='Línea de pedido original',
+    )
+    return_move_id = fields.Many2one(
+        'stock.move',
+        string='Movimiento de devolución',
+    )
+    status = fields.Selection([
+        ('pending_selection', 'Pendiente de seleccionar placas'),
+        ('pending_delivery', 'Pendiente de entrega'),
+        ('delivered', 'Entregado'),
+    ], string='Estatus', default='pending_selection')
+
+    notes = fields.Text(string='Notas')
+
+    @api.depends('m2_returned', 'original_unit_price', 'm2_replaced', 'unit_price')
+    def _compute_amount_difference(self):
+        for line in self:
+            original_amount = line.m2_returned * line.original_unit_price
+            replacement_amount = line.m2_replaced * line.unit_price
+            line.amount_difference = replacement_amount - original_amount
+```
+
 ## ./models/replacement_reason.py
 ```py
 from odoo import models, fields
@@ -538,29 +538,6 @@ class ReturnReason(models.Model):
     no_physical_return = fields.Boolean(
         string='Sin retorno físico',
         help='El material no regresa al almacén (se rompió, se perdió, etc.)',
-    )
-```
-
-## ./models/sale_order_line.py
-```py
-from odoo import models, fields
-
-
-class SaleOrderLine(models.Model):
-    _inherit = 'sale.order.line'
-
-    is_replacement = fields.Boolean(
-        string='Es reposición',
-        default=False,
-        help='Línea generada por una reposición de materiales',
-    )
-    replacement_order_id = fields.Many2one(
-        'sale.replacement.order',
-        string='Orden de reposición',
-    )
-    replacement_of_return_id = fields.Many2one(
-        'stock.picking',
-        string='Devolución origen',
     )
 ```
 
@@ -904,6 +881,29 @@ class SaleOrder(models.Model):
             'replacement_id': replacement.id,
             'name': replacement.name,
         }```
+
+## ./models/sale_order_line.py
+```py
+from odoo import models, fields
+
+
+class SaleOrderLine(models.Model):
+    _inherit = 'sale.order.line'
+
+    is_replacement = fields.Boolean(
+        string='Es reposición',
+        default=False,
+        help='Línea generada por una reposición de materiales',
+    )
+    replacement_order_id = fields.Many2one(
+        'sale.replacement.order',
+        string='Orden de reposición',
+    )
+    replacement_of_return_id = fields.Many2one(
+        'stock.picking',
+        string='Devolución origen',
+    )
+```
 
 ## ./models/stock_move.py
 ```py
@@ -2409,43 +2409,46 @@ patch(FormController.prototype, {
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Botones en SO -->
+
+    <!-- ============================================================
+         Sale Order Form: Stonia Replacements
+         Botones de reposición en el button_box nativo (no crear uno nuevo)
+         ============================================================ -->
     <record id="sale_order_form_inherit_replacements" model="ir.ui.view">
         <field name="name">sale.order.form.inherit.replacements</field>
         <field name="model">sale.order</field>
         <field name="inherit_id" ref="sale.view_order_form"/>
         <field name="arch" type="xml">
-            <!-- Botón de Reposición arriba -->
-            <xpath expr="//field[@name='partner_id']/.." position="before">
-                <div class="oe_button_box" name="replacement_button_box">
-                    <button name="action_create_replacement"
-                            type="object"
-                            class="oe_stat_button btn-primary"
-                            icon="fa-refresh"
-                            string="Reposición de Materiales"
-                            invisible="state != 'sale'"
-                            groups="stonia_replacements.group_replacement_user"/>
-                    <button name="action_open_replacements"
-                            type="object"
-                            class="oe_stat_button"
-                            icon="fa-exchange"
-                            invisible="replacement_count == 0">
-                        <field name="replacement_count" widget="statinfo" string="Reposiciones"/>
-                    </button>
-                    <button name="action_open_returns"
-                            type="object"
-                            class="oe_stat_button"
-                            icon="fa-undo"
-                            invisible="return_count == 0">
-                        <field name="return_count" widget="statinfo" string="Devoluciones"/>
-                    </button>
-                </div>
+
+            <!-- Stat buttons dentro del button_box NATIVO de Odoo -->
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button name="action_create_replacement"
+                    type="object"
+                    class="oe_stat_button"
+                    icon="fa-refresh"
+                    string="Reposición"
+                    invisible="state != 'sale'"
+                    groups="stonia_replacements.group_replacement_user"/>
+                <button name="action_open_replacements"
+                    type="object"
+                    class="oe_stat_button"
+                    icon="fa-exchange"
+                    invisible="replacement_count == 0">
+                    <field name="replacement_count" widget="statinfo" string="Reposiciones"/>
+                </button>
+                <button name="action_open_returns"
+                    type="object"
+                    class="oe_stat_button"
+                    icon="fa-undo"
+                    invisible="return_count == 0">
+                    <field name="return_count" widget="statinfo" string="Devoluciones"/>
+                </button>
             </xpath>
 
-            <!-- Sección de Resumen m² -->
+            <!-- Sección de Resumen m² antes de notas -->
             <xpath expr="//field[@name='note']" position="before">
                 <separator string="Resumen de Entregas y Reposiciones"
-                           invisible="replacement_count == 0"/>
+                    invisible="replacement_count == 0"/>
                 <group invisible="replacement_count == 0">
                     <group string="Entregas">
                         <field name="total_m2_sold" readonly="1"/>
@@ -2459,9 +2462,9 @@ patch(FormController.prototype, {
 
                 <!-- Tabla de Reposiciones -->
                 <field name="replacement_order_ids"
-                       invisible="replacement_count == 0"
-                       readonly="1"
-                       nolabel="1">
+                    invisible="replacement_count == 0"
+                    readonly="1"
+                    nolabel="1">
                     <list>
                         <field name="name"/>
                         <field name="replacement_type"/>
@@ -2470,16 +2473,17 @@ patch(FormController.prototype, {
                         <field name="total_m2_replaced" string="m² Repuestos"/>
                         <field name="total_amount_difference" string="Diferencia"/>
                         <field name="state" widget="badge"
-                               decoration-success="state == 'done'"
-                               decoration-warning="state in ('picking_pending', 'accounting_pending')"
-                               decoration-info="state in ('draft', 'confirmed')"
-                               decoration-danger="state == 'cancelled'"/>
+                            decoration-success="state == 'done'"
+                            decoration-warning="state in ('picking_pending', 'accounting_pending')"
+                            decoration-info="state in ('draft', 'confirmed')"
+                            decoration-danger="state == 'cancelled'"/>
                         <field name="accounting_state" widget="badge"
-                               decoration-success="accounting_state == 'done'"
-                               decoration-warning="accounting_state == 'pending'"/>
+                            decoration-success="accounting_state == 'done'"
+                            decoration-warning="accounting_state == 'pending'"/>
                     </list>
                 </field>
             </xpath>
+
         </field>
     </record>
 
@@ -2494,6 +2498,7 @@ patch(FormController.prototype, {
             </xpath>
         </field>
     </record>
+
 </odoo>```
 
 ## ./views/stock_picking_views.xml
@@ -2572,60 +2577,6 @@ from . import return_wizard
 from . import replacement_wizard
 from . import scrap_from_return_wizard
 ```
-
-## ./wizards/replacement_wizard_views.xml
-```xml
-<?xml version="1.0" encoding="utf-8"?>
-<odoo>
-    <record id="view_replacement_wizard_form" model="ir.ui.view">
-        <field name="name">sale.replacement.wizard.form</field>
-        <field name="model">sale.replacement.wizard</field>
-        <field name="arch" type="xml">
-            <form string="Generar Reposición de Materiales">
-                <group>
-                    <group>
-                        <field name="sale_order_id" readonly="1"/>
-                        <field name="replacement_type"/>
-                        <field name="replacement_reason_id"/>
-                    </group>
-                    <group>
-                        <field name="available_return_picking_ids" invisible="1"/>
-                        <field name="return_picking_ids" widget="many2many_tags"
-                               required="1"
-                               domain="[('id', 'in', available_return_picking_ids)]"
-                               options="{'no_create': True}"/>
-                        <field name="charge_difference"/>
-                        <field name="no_charge_reason"
-                               invisible="charge_difference == True"
-                               required="charge_difference == False"/>
-                    </group>
-                </group>
-                <separator string="Líneas de Reposición"/>
-                <field name="line_ids">
-                    <list editable="bottom">
-                        <field name="product_id" readonly="1" string="Prod. Original"/>
-                        <field name="lot_id" readonly="1" string="Lote devuelto"/>
-                        <field name="m2_returned" readonly="1"/>
-                        <field name="replacement_product_id" string="Prod. Reposición"/>
-                        <field name="m2_to_replace"/>
-                        <field name="original_unit_price" readonly="1"/>
-                        <field name="replacement_unit_price"/>
-                    </list>
-                </field>
-                <group>
-                    <field name="notes" placeholder="Notas internas..."/>
-                </group>
-                <footer>
-                    <button name="action_create_replacement"
-                            string="Crear Reposición"
-                            type="object"
-                            class="btn-primary"/>
-                    <button string="Cancelar" class="btn-secondary" special="cancel"/>
-                </footer>
-            </form>
-        </field>
-    </record>
-</odoo>```
 
 ## ./wizards/replacement_wizard.py
 ```py
@@ -2799,53 +2750,51 @@ class SaleReplacementWizardLine(models.TransientModel):
     move_id = fields.Many2one('stock.move', string='Movimiento')
     sale_line_id = fields.Many2one('sale.order.line', string='Línea de venta')```
 
-## ./wizards/return_wizard_views.xml
+## ./wizards/replacement_wizard_views.xml
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <record id="view_return_wizard_form" model="ir.ui.view">
-        <field name="name">stock.return.wizard.form</field>
-        <field name="model">stock.return.wizard</field>
+    <record id="view_replacement_wizard_form" model="ir.ui.view">
+        <field name="name">sale.replacement.wizard.form</field>
+        <field name="model">sale.replacement.wizard</field>
         <field name="arch" type="xml">
-            <form string="Devolver Material">
+            <form string="Generar Reposición de Materiales">
                 <group>
                     <group>
-                        <field name="picking_id" readonly="1"/>
                         <field name="sale_order_id" readonly="1"/>
+                        <field name="replacement_type"/>
+                        <field name="replacement_reason_id"/>
                     </group>
                     <group>
-                        <field name="return_reason_id"/>
-                        <field name="is_logistics_return" invisible="1"/>
-                        <field name="no_physical_return" invisible="1"/>
+                        <field name="available_return_picking_ids" invisible="1"/>
+                        <field name="return_picking_ids" widget="many2many_tags"
+                               required="1"
+                               domain="[('id', 'in', available_return_picking_ids)]"
+                               options="{'no_create': True}"/>
+                        <field name="charge_difference"/>
+                        <field name="no_charge_reason"
+                               invisible="charge_difference == True"
+                               required="charge_difference == False"/>
                     </group>
                 </group>
-                <div class="alert alert-warning"
-                     role="alert"
-                     invisible="is_logistics_return != True">
-                    <strong>⚠️ Retorno logístico:</strong> No se generará nota de crédito automática.
-                </div>
-                <div class="alert alert-danger"
-                     role="alert"
-                     invisible="no_physical_return != True">
-                    <strong>⚠️ Sin retorno físico:</strong> El material no regresa al almacén.
-                    Se registrará como evento de pérdida controlado.
-                </div>
+                <separator string="Líneas de Reposición"/>
                 <field name="line_ids">
                     <list editable="bottom">
-                        <field name="to_return" widget="boolean_toggle"/>
-                        <field name="product_id" readonly="1"/>
-                        <field name="lot_id" readonly="1"/>
-                        <field name="qty_delivered" readonly="1"/>
-                        <field name="qty_to_return"/>
+                        <field name="product_id" readonly="1" string="Prod. Original"/>
+                        <field name="lot_id" readonly="1" string="Lote devuelto"/>
+                        <field name="m2_returned" readonly="1"/>
+                        <field name="replacement_product_id" string="Prod. Reposición"/>
+                        <field name="m2_to_replace"/>
+                        <field name="original_unit_price" readonly="1"/>
+                        <field name="replacement_unit_price"/>
                     </list>
                 </field>
                 <group>
-                    <field name="total_m2" readonly="1"/>
-                    <field name="notes" placeholder="Notas adicionales sobre la devolución..."/>
+                    <field name="notes" placeholder="Notas internas..."/>
                 </group>
                 <footer>
-                    <button name="action_confirm_return"
-                            string="Confirmar Devolución"
+                    <button name="action_create_replacement"
+                            string="Crear Reposición"
                             type="object"
                             class="btn-primary"/>
                     <button string="Cancelar" class="btn-secondary" special="cancel"/>
@@ -2853,8 +2802,7 @@ class SaleReplacementWizardLine(models.TransientModel):
             </form>
         </field>
     </record>
-</odoo>
-```
+</odoo>```
 
 ## ./wizards/return_wizard.py
 ```py
@@ -2998,34 +2946,55 @@ class StockReturnWizardLine(models.TransientModel):
     qty_delivered = fields.Float(string='m² entregados')
     qty_to_return = fields.Float(string='m² a devolver')```
 
-## ./wizards/scrap_from_return_wizard_views.xml
+## ./wizards/return_wizard_views.xml
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <record id="view_scrap_from_return_wizard_form" model="ir.ui.view">
-        <field name="name">stock.scrap.from.return.wizard.form</field>
-        <field name="model">stock.scrap.from.return.wizard</field>
+    <record id="view_return_wizard_form" model="ir.ui.view">
+        <field name="name">stock.return.wizard.form</field>
+        <field name="model">stock.return.wizard</field>
         <field name="arch" type="xml">
-            <form string="Desechar desde Devolución">
+            <form string="Devolver Material">
                 <group>
-                    <field name="return_picking_id" readonly="1"/>
-                    <field name="scrap_reason" placeholder="Motivo del desecho (obligatorio)..."/>
+                    <group>
+                        <field name="picking_id" readonly="1"/>
+                        <field name="sale_order_id" readonly="1"/>
+                    </group>
+                    <group>
+                        <field name="return_reason_id"/>
+                        <field name="is_logistics_return" invisible="1"/>
+                        <field name="no_physical_return" invisible="1"/>
+                    </group>
                 </group>
-                <separator string="Material a Desechar"/>
+                <div class="alert alert-warning"
+                     role="alert"
+                     invisible="is_logistics_return != True">
+                    <strong>⚠️ Retorno logístico:</strong> No se generará nota de crédito automática.
+                </div>
+                <div class="alert alert-danger"
+                     role="alert"
+                     invisible="no_physical_return != True">
+                    <strong>⚠️ Sin retorno físico:</strong> El material no regresa al almacén.
+                    Se registrará como evento de pérdida controlado.
+                </div>
                 <field name="line_ids">
                     <list editable="bottom">
-                        <field name="to_scrap" widget="boolean_toggle"/>
+                        <field name="to_return" widget="boolean_toggle"/>
                         <field name="product_id" readonly="1"/>
                         <field name="lot_id" readonly="1"/>
-                        <field name="qty_available" readonly="1"/>
-                        <field name="qty_to_scrap"/>
+                        <field name="qty_delivered" readonly="1"/>
+                        <field name="qty_to_return"/>
                     </list>
                 </field>
+                <group>
+                    <field name="total_m2" readonly="1"/>
+                    <field name="notes" placeholder="Notas adicionales sobre la devolución..."/>
+                </group>
                 <footer>
-                    <button name="action_scrap"
-                            string="Desechar Material"
+                    <button name="action_confirm_return"
+                            string="Confirmar Devolución"
                             type="object"
-                            class="btn-danger"/>
+                            class="btn-primary"/>
                     <button string="Cancelar" class="btn-secondary" special="cancel"/>
                 </footer>
             </form>
@@ -3135,5 +3104,41 @@ class ScrapFromReturnWizardLine(models.TransientModel):
     lot_id = fields.Many2one('stock.lot', string='Lote/Placa')
     qty_available = fields.Float(string='m² disponibles')
     qty_to_scrap = fields.Float(string='m² a desechar')
+```
+
+## ./wizards/scrap_from_return_wizard_views.xml
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_scrap_from_return_wizard_form" model="ir.ui.view">
+        <field name="name">stock.scrap.from.return.wizard.form</field>
+        <field name="model">stock.scrap.from.return.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Desechar desde Devolución">
+                <group>
+                    <field name="return_picking_id" readonly="1"/>
+                    <field name="scrap_reason" placeholder="Motivo del desecho (obligatorio)..."/>
+                </group>
+                <separator string="Material a Desechar"/>
+                <field name="line_ids">
+                    <list editable="bottom">
+                        <field name="to_scrap" widget="boolean_toggle"/>
+                        <field name="product_id" readonly="1"/>
+                        <field name="lot_id" readonly="1"/>
+                        <field name="qty_available" readonly="1"/>
+                        <field name="qty_to_scrap"/>
+                    </list>
+                </field>
+                <footer>
+                    <button name="action_scrap"
+                            string="Desechar Material"
+                            type="object"
+                            class="btn-danger"/>
+                    <button string="Cancelar" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+</odoo>
 ```
 

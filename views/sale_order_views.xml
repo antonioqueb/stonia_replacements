@@ -1,10 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
 
-    <!-- ============================================================
-         Sale Order Form: Stonia Replacements
-         Botones de reposición en el button_box nativo (no crear uno nuevo)
-         ============================================================ -->
     <record id="sale_order_form_inherit_replacements" model="ir.ui.view">
         <field name="name">sale.order.form.inherit.replacements</field>
         <field name="model">sale.order</field>
@@ -36,43 +32,40 @@
                 </button>
             </xpath>
 
-            <!-- Sección de Resumen m² antes de notas -->
-            <xpath expr="//field[@name='note']" position="before">
-                <separator string="Resumen de Entregas y Reposiciones"
-                    invisible="replacement_count == 0"/>
-                <group invisible="replacement_count == 0">
-                    <group string="Entregas">
-                        <field name="total_m2_sold" readonly="1"/>
-                        <field name="total_m2_delivered" readonly="1"/>
+            <!-- Nueva página en el notebook para reposiciones -->
+            <xpath expr="//page[@name='order_lines']" position="after">
+                <page string="Reposiciones" name="replacements_tab"
+                      invisible="replacement_count == 0">
+                    <group>
+                        <group string="Entregas">
+                            <field name="total_m2_sold" readonly="1"/>
+                            <field name="total_m2_delivered" readonly="1"/>
+                        </group>
+                        <group string="Devoluciones / Reposiciones">
+                            <field name="total_m2_returned" readonly="1"/>
+                            <field name="total_m2_replaced" readonly="1"/>
+                        </group>
                     </group>
-                    <group string="Devoluciones / Reposiciones">
-                        <field name="total_m2_returned" readonly="1"/>
-                        <field name="total_m2_replaced" readonly="1"/>
-                    </group>
-                </group>
 
-                <!-- Tabla de Reposiciones -->
-                <field name="replacement_order_ids"
-                    invisible="replacement_count == 0"
-                    readonly="1"
-                    nolabel="1">
-                    <list>
-                        <field name="name"/>
-                        <field name="replacement_type"/>
-                        <field name="replacement_reason_id"/>
-                        <field name="total_m2_returned" string="m² Devueltos"/>
-                        <field name="total_m2_replaced" string="m² Repuestos"/>
-                        <field name="total_amount_difference" string="Diferencia"/>
-                        <field name="state" widget="badge"
-                            decoration-success="state == 'done'"
-                            decoration-warning="state in ('picking_pending', 'accounting_pending')"
-                            decoration-info="state in ('draft', 'confirmed')"
-                            decoration-danger="state == 'cancelled'"/>
-                        <field name="accounting_state" widget="badge"
-                            decoration-success="accounting_state == 'done'"
-                            decoration-warning="accounting_state == 'pending'"/>
-                    </list>
-                </field>
+                    <field name="replacement_order_ids" readonly="1" nolabel="1">
+                        <list>
+                            <field name="name"/>
+                            <field name="replacement_type"/>
+                            <field name="replacement_reason_id"/>
+                            <field name="total_m2_returned" string="m² Devueltos"/>
+                            <field name="total_m2_replaced" string="m² Repuestos"/>
+                            <field name="total_amount_difference" string="Diferencia"/>
+                            <field name="state" widget="badge"
+                                decoration-success="state == 'done'"
+                                decoration-warning="state in ('picking_pending', 'accounting_pending')"
+                                decoration-info="state in ('draft', 'confirmed')"
+                                decoration-danger="state == 'cancelled'"/>
+                            <field name="accounting_state" widget="badge"
+                                decoration-success="accounting_state == 'done'"
+                                decoration-warning="accounting_state == 'pending'"/>
+                        </list>
+                    </field>
+                </page>
             </xpath>
 
         </field>
