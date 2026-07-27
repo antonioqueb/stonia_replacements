@@ -66,6 +66,12 @@ class SaleOrder(models.Model):
             order.return_picking_ids = returns
             order.return_count = len(returns)
 
+    @api.depends(
+        'order_line.product_uom_qty',
+        'order_line.qty_delivered',
+        'replacement_order_ids.total_m2_returned',
+        'replacement_order_ids.total_m2_replaced',
+    )
     def _compute_m2_summary(self):
         for order in self:
             order.total_m2_sold = sum(order.order_line.mapped('product_uom_qty'))
