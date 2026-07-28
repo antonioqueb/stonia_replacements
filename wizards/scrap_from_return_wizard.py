@@ -41,10 +41,21 @@ class ScrapFromReturnWizard(models.TransientModel):
         if not lines_to_scrap:
             raise UserError(_('Seleccione al menos un material para desechar.'))
 
-        scrap_location = self.env['stock.location'].search([
-            ('scrap_location', '=', True),
-            ('company_id', 'in', [self.env.company.id, False]),
-        ], limit=1)
+        # Odoo 19 eliminó el booleano scrap_location: el desecho es una
+        # ubicación usage='inventory' (Scrap estándar de preferencia).
+        scrap_location = self.env.ref(
+            'stock.stock_location_scrapped', raise_if_not_found=False)
+        if scrap_location and (
+            scrap_location.usage != 'inventory'
+            or not scrap_location.active
+            or scrap_location.company_id.id not in (False, self.env.company.id)
+        ):
+            scrap_location = None
+        if not scrap_location:
+            scrap_location = self.env['stock.location'].search([
+                ('usage', '=', 'inventory'),
+                ('company_id', 'in', [self.env.company.id, False]),
+            ], order='id', limit=1)
 
         if not scrap_location:
             raise UserError(_('No se encontró una ubicación de desecho configurada.'))

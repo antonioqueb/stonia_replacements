@@ -1,6 +1,6 @@
 {
     'name': 'Reposición de Materiales',
-    'version': '19.0.1.3.0',
+    'version': '19.0.1.4.0',
     'category': 'Sales',
     'summary': 'Gestión de devoluciones y reposiciones de materiales con trazabilidad completa',
     'description': """
