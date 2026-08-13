@@ -1,5 +1,8 @@
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError
+from odoo.addons.stonia_replacements.models.som_date_format import (
+    som_format_date,
+)
 
 
 class SaleOrder(models.Model):
@@ -155,7 +158,7 @@ class SaleOrder(models.Model):
                 'id': ret.id,
                 'name': ret.name,
                 'origin': ret.origin or '',
-                'date': ret.scheduled_date.strftime('%d/%m/%Y') if ret.scheduled_date else '',
+                'date': som_format_date(ret.scheduled_date, empty=''),
                 'state': ret.state,
                 'total_m2': total_m2,
                 'return_reason': ret.return_reason_id.name if ret.return_reason_id else '',
