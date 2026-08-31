@@ -15,6 +15,11 @@ class ReplacementOrderLine(models.Model):
         related='replacement_order_id.sale_order_id',
         store=True,
     )
+    company_id = fields.Many2one(
+        'res.company', string='Compañía',
+        related='replacement_order_id.company_id',
+        store=True, readonly=True, index=True,
+    )
     # Producto original (devuelto)
     original_product_id = fields.Many2one(
         'product.product',

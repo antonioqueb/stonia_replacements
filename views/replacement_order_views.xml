@@ -56,6 +56,7 @@
                             <field name="partner_id" readonly="1"/>
                             <field name="replacement_type" readonly="state != 'draft'"/>
                             <field name="replacement_reason_id" readonly="state != 'draft'"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
                         </group>
                         <group>
                             <field name="return_picking_ids" widget="many2many_tags"
@@ -143,6 +144,7 @@
                        decoration-success="accounting_state == 'done'"
                        decoration-warning="accounting_state == 'pending'"/>
                 <field name="create_date"/>
+                <field name="company_id" optional="hide" groups="base.group_multi_company"/>
             </list>
         </field>
     </record>
@@ -178,6 +180,9 @@
                             context="{'group_by': 'partner_id'}"/>
                     <filter name="group_reason" string="Motivo"
                             context="{'group_by': 'replacement_reason_id'}"/>
+                    <filter name="group_company" string="Compañía"
+                            context="{'group_by': 'company_id'}"
+                            groups="base.group_multi_company"/>
             </search>
         </field>
     </record>

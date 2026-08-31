@@ -74,6 +74,10 @@ class StockReturnWizard(models.TransientModel):
             raise UserError(_('Debe indicar un motivo de devolución.'))
 
         picking = self.picking_id
+        # Multiempresa: la devolución nace en la compañía de la entrega
+        # original (tipo de operación de retorno de ESA compañía). El destino
+        # es la ubicación de la que salió la entrega: jamás tránsito.
+        company = picking.company_id
         picking_type = picking.picking_type_id.return_picking_type_id or picking.picking_type_id
 
         # Crear picking de devolución
@@ -89,11 +93,13 @@ class StockReturnWizard(models.TransientModel):
             'return_notes': self.notes,
             'is_logistics_return': self.return_reason_id.is_logistics,
             'original_delivery_id': picking.id,
+            'company_id': company.id,
         }
-        return_picking = self.env['stock.picking'].create(return_picking_vals)
+        return_picking = self.env['stock.picking'].with_company(company).create(
+            return_picking_vals)
 
         for line in lines_to_return:
-            self.env['stock.move'].create({
+            self.env['stock.move'].with_company(company).create({
                 'product_id': line.product_id.id,
                 'product_uom_qty': line.qty_to_return,
                 'product_uom': line.product_id.uom_id.id,
@@ -101,6 +107,7 @@ class StockReturnWizard(models.TransientModel):
                 'location_id': picking.location_dest_id.id,
                 'location_dest_id': picking.location_id.id,
                 'origin_returned_move_id': line.move_id.id,
+                'company_id': company.id,
             })
 
         return_picking.action_confirm()

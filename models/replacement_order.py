@@ -143,12 +143,42 @@ class ReplacementOrder(models.Model):
             rec.total_m2_replaced = sum(rec.line_ids.mapped('m2_replaced'))
             rec.total_amount_difference = sum(rec.line_ids.mapped('amount_difference'))
 
+    @api.model
+    def _som_next_sequence(self, code, company=None):
+        """next_by_code con la compañía del documento; si la compañía no tiene
+        secuencia propia y la plantilla es de otra compañía, se clona para ella."""
+        company = company or self.env.company
+        Seq = self.env['ir.sequence'].sudo()
+        name = Seq.with_company(company).next_by_code(code)
+        if name:
+            return name
+        template = Seq.search([('code', '=', code)], order='company_id', limit=1)
+        if not template:
+            return False
+        template.copy({
+            'company_id': company.id,
+            'number_next': 1,
+            'name': '%s (%s)' % (template.name, company.name),
+        })
+        return Seq.with_company(company).next_by_code(code)
+
     @api.model_create_multi
     def create(self, vals_list):
         for vals in vals_list:
+            # Multiempresa: la reposición hereda la compañía del pedido (no la
+            # activa del usuario) y el folio se pide con esa compañía.
+            if not vals.get('company_id') and vals.get('sale_order_id'):
+                so_company = self.env['sale.order'].browse(
+                    vals['sale_order_id']).company_id
+                if so_company:
+                    vals['company_id'] = so_company.id
+            company = (
+                self.env['res.company'].browse(vals['company_id'])
+                if vals.get('company_id') else self.env.company
+            )
             if vals.get('name', _('Nuevo')) == _('Nuevo'):
-                vals['name'] = self.env['ir.sequence'].next_by_code(
-                    'sale.replacement.order'
+                vals['name'] = self._som_next_sequence(
+                    'sale.replacement.order', company
                 ) or _('Nuevo')
         return super().create(vals_list)
 
@@ -182,9 +212,13 @@ class ReplacementOrder(models.Model):
         if self.replacement_type == 'refund':
             raise UserError(_('Las devoluciones de dinero no generan entrega.'))
 
+        # Tipo de operación y picking de la compañía de la reposición (la del
+        # pedido), nunca de la compañía activa del usuario.
+        company = self.company_id or self.sale_order_id.company_id
         picking_type = self.env['stock.picking.type'].search([
             ('code', '=', 'outgoing'),
-            ('warehouse_id.company_id', '=', self.company_id.id),
+            ('company_id', '=', company.id),
+            ('warehouse_id.company_id', '=', company.id),
         ], limit=1)
 
         if not picking_type:
@@ -199,11 +233,13 @@ class ReplacementOrder(models.Model):
             'location_dest_id': self.partner_id.property_stock_customer.id,
             'is_replacement_delivery': True,
             'replacement_order_id': self.id,
+            'company_id': company.id,
         }
-        picking = self.env['stock.picking'].create(picking_vals)
+        picking = self.env['stock.picking'].with_company(company).create(
+            picking_vals)
 
         for line in self.line_ids.filtered(lambda l: l.m2_replaced > 0):
-            self.env['stock.move'].create({
+            self.env['stock.move'].with_company(company).create({
                 'product_id': line.product_id.id,
                 'product_uom_qty': line.m2_replaced,
                 'product_uom': line.product_id.uom_id.id,
@@ -213,6 +249,7 @@ class ReplacementOrder(models.Model):
                 'origin': self.name,
                 'sale_line_id': line.sale_line_id.id if line.sale_line_id else False,
                 'is_replacement_move': True,
+                'company_id': company.id,
             })
 
         picking.action_confirm()

@@ -1,6 +1,6 @@
 {
     'name': 'Reposición de Materiales',
-    'version': '19.0.1.6.0',
+    'version': '19.0.1.7.0',
     'category': 'Sales',
     'summary': 'Gestión de devoluciones y reposiciones de materiales con trazabilidad completa',
     'description': """
@@ -23,6 +23,7 @@
     'data': [
         'security/security_groups.xml',
         'security/ir.model.access.csv',
+        'security/multi_company_rules.xml',
         'data/replacement_reason_data.xml',
         'data/return_reason_data.xml',
         'views/sale_order_views.xml',

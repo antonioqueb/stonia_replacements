@@ -41,6 +41,10 @@ class ScrapFromReturnWizard(models.TransientModel):
         if not lines_to_scrap:
             raise UserError(_('Seleccione al menos un material para desechar.'))
 
+        # Multiempresa: la ubicación de desecho y el scrap son de la compañía
+        # de la devolución (no de la compañía activa del usuario).
+        company = self.return_picking_id.company_id or self.env.company
+
         # Odoo 19 eliminó el booleano scrap_location: el desecho es una
         # ubicación usage='inventory' (Scrap estándar de preferencia).
         scrap_location = self.env.ref(
@@ -48,13 +52,13 @@ class ScrapFromReturnWizard(models.TransientModel):
         if scrap_location and (
             scrap_location.usage != 'inventory'
             or not scrap_location.active
-            or scrap_location.company_id.id not in (False, self.env.company.id)
+            or scrap_location.company_id.id not in (False, company.id)
         ):
             scrap_location = None
         if not scrap_location:
             scrap_location = self.env['stock.location'].search([
                 ('usage', '=', 'inventory'),
-                ('company_id', 'in', [self.env.company.id, False]),
+                ('company_id', 'in', [company.id, False]),
             ], order='id', limit=1)
 
         if not scrap_location:
@@ -62,13 +66,14 @@ class ScrapFromReturnWizard(models.TransientModel):
 
         scraps = self.env['stock.scrap']
         for line in lines_to_scrap:
-            scrap = self.env['stock.scrap'].create({
+            scrap = self.env['stock.scrap'].with_company(company).create({
                 'product_id': line.product_id.id,
                 'lot_id': line.lot_id.id if line.lot_id else False,
                 'scrap_qty': line.qty_to_scrap,
                 'picking_id': self.return_picking_id.id,
                 'location_id': self.return_picking_id.location_dest_id.id,
                 'scrap_location_id': scrap_location.id,
+                'company_id': company.id,
                 'origin': _('Desecho desde devolución %s - %s') % (
                     self.return_picking_id.name,
                     self.scrap_reason[:50] if self.scrap_reason else '',
