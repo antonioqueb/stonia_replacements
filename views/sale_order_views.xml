@@ -25,6 +25,7 @@
                 </button>
                 <button name="action_open_returns"
                     type="object"
+                    groups="base.group_no_one"
                     class="oe_stat_button"
                     icon="fa-undo"
                     invisible="return_count == 0">
